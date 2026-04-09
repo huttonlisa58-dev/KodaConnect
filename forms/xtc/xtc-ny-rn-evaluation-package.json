@@ -1,0 +1,927 @@
+{
+  "form_package": {
+    "version": "1.0",
+    "form_name": "X-Treme Care NY RN Evaluation",
+    "company": "X-Treme Care, LLC",
+    "render_mode": "generated",
+    "total_pages": 2,
+    "page_sizes": {
+      "1": [612.0, 792.0],
+      "2": [612.0, 792.0]
+    },
+    "coordinate_system": "top-left"
+  },
+  "sub_forms": [
+    {
+      "id": "supervisory_visit",
+      "name": "Supervisory Visit Report",
+      "pages": [1],
+      "always_show": true,
+      "content_html": "<h2>Supervisory Visit Report</h2><p>New York State Department of Health (NYS DOH) and Health Care Financing Administration (HCFA) require ongoing skills competency evaluation through annual performance appraisals and other evaluations as needed. This form documents the competency assessment for home care workers.</p>",
+      "fields": [
+        {
+          "id": "supervisory_visit__employee_name",
+          "type": "text",
+          "label": "Employee Name",
+          "entity": "employee",
+          "auto_fill_from": "profile",
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__employee_level",
+          "type": "select",
+          "label": "Employee Level",
+          "entity": "employee",
+          "options": ["HHA", "PCA"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__bathing_competency",
+          "type": "select",
+          "label": "Bathing (tub, shower, sponge) - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__bathing_method",
+          "type": "select",
+          "label": "Bathing (tub, shower, sponge) - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__shampoo_competency",
+          "type": "select",
+          "label": "Shampoo (Bed, Sink or Tub) - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__shampoo_method",
+          "type": "select",
+          "label": "Shampoo (Bed, Sink or Tub) - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__nail_care_competency",
+          "type": "select",
+          "label": "Nail Care (Fingers & Toes) - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__nail_care_method",
+          "type": "select",
+          "label": "Nail Care (Fingers & Toes) - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__skin_care_competency",
+          "type": "select",
+          "label": "Skin Care (Lotion & Massage) - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__skin_care_method",
+          "type": "select",
+          "label": "Skin Care (Lotion & Massage) - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__oral_hygiene_competency",
+          "type": "select",
+          "label": "Oral Hygiene - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__oral_hygiene_method",
+          "type": "select",
+          "label": "Oral Hygiene - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__toileting_competency",
+          "type": "select",
+          "label": "Toileting & Elimination - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__toileting_method",
+          "type": "select",
+          "label": "Toileting & Elimination - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__transfer_competency",
+          "type": "select",
+          "label": "Transfer Techniques - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__transfer_method",
+          "type": "select",
+          "label": "Transfer Techniques - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__positioning_competency",
+          "type": "select",
+          "label": "Positioning - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__positioning_method",
+          "type": "select",
+          "label": "Positioning - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__range_of_motion_competency",
+          "type": "select",
+          "label": "Range of Motion - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__range_of_motion_method",
+          "type": "select",
+          "label": "Range of Motion - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__ambulation_competency",
+          "type": "select",
+          "label": "Ambulation (Alone, with aids) - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__ambulation_method",
+          "type": "select",
+          "label": "Ambulation (Alone, with aids) - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__tpr_bp_competency",
+          "type": "select",
+          "label": "TPR & BP (Read and Record) - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__tpr_bp_method",
+          "type": "select",
+          "label": "TPR & BP (Read and Record) - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__infection_control_competency",
+          "type": "select",
+          "label": "Follows Infection Control Procedures - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__infection_control_method",
+          "type": "select",
+          "label": "Follows Infection Control Procedures - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__diet_fluid_competency",
+          "type": "select",
+          "label": "Understands elements of managed diets & fluid intake - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__diet_fluid_method",
+          "type": "select",
+          "label": "Understands elements of managed diets & fluid intake - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__clean_environment_competency",
+          "type": "select",
+          "label": "Maintenance of clean and safe environment - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__clean_environment_method",
+          "type": "select",
+          "label": "Maintenance of clean and safe environment - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__client_needs_competency",
+          "type": "select",
+          "label": "Understands client's physical, emotional & developmental needs - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__client_needs_method",
+          "type": "select",
+          "label": "Understands client's physical, emotional & developmental needs - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__records_competency",
+          "type": "select",
+          "label": "Maintains records of patient activities performed - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__records_method",
+          "type": "select",
+          "label": "Maintains records of patient activities performed - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__report_changes_competency",
+          "type": "select",
+          "label": "Reports changes in patient condition and environment - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__report_changes_method",
+          "type": "select",
+          "label": "Reports changes in patient condition and environment - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__emergency_procedures_competency",
+          "type": "select",
+          "label": "Understands emergency procedures, patient rights and confidentiality - Competency",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__emergency_procedures_method",
+          "type": "select",
+          "label": "Understands emergency procedures, patient rights and confidentiality - Method",
+          "entity": "shared",
+          "options": ["I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__comments",
+          "type": "textarea",
+          "label": "Comments",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__rn_signature",
+          "type": "signature",
+          "label": "RN Signature",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "supervisory_visit__evaluation_date",
+          "type": "date",
+          "label": "Evaluation Date",
+          "entity": "shared",
+          "default_today": true,
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "competency_evaluation",
+      "name": "Competency Evaluation",
+      "pages": [2],
+      "always_show": true,
+      "content_html": "<h2>Competency Evaluation</h2><p>In accordance with OBRA 1987 conditions of participation, the following assessment documents competency evaluation for home care workers. This evaluation may be initial, annual, training-related, or as otherwise specified.</p>",
+      "fields": [
+        {
+          "id": "competency_evaluation__employee_name",
+          "type": "text",
+          "label": "Employee Name",
+          "entity": "employee",
+          "auto_fill_from": "supervisory_visit__employee_name",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__employee_ssn_last4",
+          "type": "text",
+          "label": "Last 4 of SSN",
+          "entity": "employee",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__level",
+          "type": "select",
+          "label": "Employee Level",
+          "entity": "employee",
+          "options": ["HHA", "PCA"],
+          "auto_fill_from": "supervisory_visit__employee_level",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__evaluation_type",
+          "type": "checkbox_group",
+          "label": "Evaluation Type",
+          "entity": "shared",
+          "options": ["Initial", "Annual", "Training", "SPTs", "Other"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__handwashing_rating",
+          "type": "select",
+          "label": "Handwashing - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__handwashing_method",
+          "type": "select",
+          "label": "Handwashing - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__handwashing_date",
+          "type": "date",
+          "label": "Handwashing - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bath_bed_rating",
+          "type": "select",
+          "label": "Bath: Bed - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bath_bed_method",
+          "type": "select",
+          "label": "Bath: Bed - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bath_bed_date",
+          "type": "date",
+          "label": "Bath: Bed - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bath_sponge_rating",
+          "type": "select",
+          "label": "Bath: Sponge, Tub or Shower - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bath_sponge_method",
+          "type": "select",
+          "label": "Bath: Sponge, Tub or Shower - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bath_sponge_date",
+          "type": "date",
+          "label": "Bath: Sponge, Tub or Shower - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__shampoo_rating",
+          "type": "select",
+          "label": "Shampoo: Bed, Sink or Tub - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__shampoo_method",
+          "type": "select",
+          "label": "Shampoo: Bed, Sink or Tub - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__shampoo_date",
+          "type": "date",
+          "label": "Shampoo: Bed, Sink or Tub - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__nail_care_rating",
+          "type": "select",
+          "label": "Nail Care: Fingers and Toes - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__nail_care_method",
+          "type": "select",
+          "label": "Nail Care: Fingers and Toes - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__nail_care_date",
+          "type": "date",
+          "label": "Nail Care: Fingers and Toes - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__skin_care_rating",
+          "type": "select",
+          "label": "Skin Care: Lotion and Massage - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__skin_care_method",
+          "type": "select",
+          "label": "Skin Care: Lotion and Massage - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__skin_care_date",
+          "type": "date",
+          "label": "Skin Care: Lotion and Massage - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__oral_hygiene_rating",
+          "type": "select",
+          "label": "Oral Hygiene - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__oral_hygiene_method",
+          "type": "select",
+          "label": "Oral Hygiene - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__oral_hygiene_date",
+          "type": "date",
+          "label": "Oral Hygiene - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__toileting_rating",
+          "type": "select",
+          "label": "Toileting and elimination - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__toileting_method",
+          "type": "select",
+          "label": "Toileting and elimination - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__toileting_date",
+          "type": "date",
+          "label": "Toileting and elimination - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__transfer_rating",
+          "type": "select",
+          "label": "Transfer Techniques - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__transfer_method",
+          "type": "select",
+          "label": "Transfer Techniques - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__transfer_date",
+          "type": "date",
+          "label": "Transfer Techniques - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__positioning_rating",
+          "type": "select",
+          "label": "Positioning - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__positioning_method",
+          "type": "select",
+          "label": "Positioning - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__positioning_date",
+          "type": "date",
+          "label": "Positioning - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__range_of_motion_rating",
+          "type": "select",
+          "label": "Range of Motion - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__range_of_motion_method",
+          "type": "select",
+          "label": "Range of Motion - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__range_of_motion_date",
+          "type": "date",
+          "label": "Range of Motion - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__ambulation_rating",
+          "type": "select",
+          "label": "Ambulation: With or Without aide - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__ambulation_method",
+          "type": "select",
+          "label": "Ambulation: With or Without aide - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__ambulation_date",
+          "type": "date",
+          "label": "Ambulation: With or Without aide - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__tpr_rating",
+          "type": "select",
+          "label": "TPR: Read and Record - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__tpr_method",
+          "type": "select",
+          "label": "TPR: Read and Record - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__tpr_date",
+          "type": "date",
+          "label": "TPR: Read and Record - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bp_rating",
+          "type": "select",
+          "label": "BP: Read and Record - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bp_method",
+          "type": "select",
+          "label": "BP: Read and Record - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__bp_date",
+          "type": "date",
+          "label": "BP: Read and Record - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__communication_rating",
+          "type": "select",
+          "label": "Communication Skills - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__communication_method",
+          "type": "select",
+          "label": "Communication Skills - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__communication_date",
+          "type": "date",
+          "label": "Communication Skills - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__infection_control_rating",
+          "type": "select",
+          "label": "Follows Infection Control Prox. And Universal Prec. - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__infection_control_method",
+          "type": "select",
+          "label": "Follows Infection Control Prox. And Universal Prec. - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__infection_control_date",
+          "type": "date",
+          "label": "Follows Infection Control Prox. And Universal Prec. - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__diet_fluid_rating",
+          "type": "select",
+          "label": "Understand elements of managed diets and fluid intake - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__diet_fluid_method",
+          "type": "select",
+          "label": "Understand elements of managed diets and fluid intake - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__diet_fluid_date",
+          "type": "date",
+          "label": "Understand elements of managed diets and fluid intake - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__clean_environment_rating",
+          "type": "select",
+          "label": "Maintenance of clean, safe and healthy environment - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__clean_environment_method",
+          "type": "select",
+          "label": "Maintenance of clean, safe and healthy environment - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__clean_environment_date",
+          "type": "date",
+          "label": "Maintenance of clean, safe and healthy environment - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__patient_needs_rating",
+          "type": "select",
+          "label": "Understands patient's physical, emotional, security and developmental needs - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__patient_needs_method",
+          "type": "select",
+          "label": "Understands patient's physical, emotional, security and developmental needs - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__patient_needs_date",
+          "type": "date",
+          "label": "Understands patient's physical, emotional, security and developmental needs - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__body_functioning_rating",
+          "type": "select",
+          "label": "Understand elements of body functioning and changes reportable to supervisor - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__body_functioning_method",
+          "type": "select",
+          "label": "Understand elements of body functioning and changes reportable to supervisor - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__body_functioning_date",
+          "type": "date",
+          "label": "Understand elements of body functioning and changes reportable to supervisor - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__emergency_procedures_rating",
+          "type": "select",
+          "label": "Understands and recognizes emergency procedures, patient rights and confidentiality - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__emergency_procedures_method",
+          "type": "select",
+          "label": "Understands and recognizes emergency procedures, patient rights and confidentiality - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__emergency_procedures_date",
+          "type": "date",
+          "label": "Understands and recognizes emergency procedures, patient rights and confidentiality - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__records_rating",
+          "type": "select",
+          "label": "Maintains records of patient activities performed - Rating",
+          "entity": "shared",
+          "options": ["S", "U"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__records_method",
+          "type": "select",
+          "label": "Maintains records of patient activities performed - Method",
+          "entity": "shared",
+          "options": ["E", "T", "S", "I", "J", "O"],
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__records_date",
+          "type": "date",
+          "label": "Maintains records of patient activities performed - Date",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__rn_name",
+          "type": "text",
+          "label": "R.N. Evaluation Name Print",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__rn_signature",
+          "type": "signature",
+          "label": "RN Signature",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__rn_license_number",
+          "type": "text",
+          "label": "RN License Number",
+          "entity": "shared",
+          "required": false
+        },
+        {
+          "id": "competency_evaluation__evaluation_date",
+          "type": "date",
+          "label": "Evaluation Date",
+          "entity": "shared",
+          "default_today": true,
+          "required": false
+        }
+      ]
+    }
+  ]
+}

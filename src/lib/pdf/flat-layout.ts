@@ -1,0 +1,3623 @@
+/**
+ * Flat Layout PDF Generator
+ * Generates professionally styled PDFs with form data (generated mode)
+ */
+
+import { PDFDocument, PDFPage, PDFFont, StandardFonts, rgb } from 'pdf-lib';
+import { NextResponse } from 'next/server';
+import {
+  sanitizeText,
+  decodeHtmlEntities,
+  formatDateValue,
+  formatTimeValue,
+  getOptionLabel,
+  getCheckboxGroupLabels,
+  fieldIdToLabel,
+  capitalizeName,
+} from './text-utils';
+import { renderHtmlContent } from './html-renderer';
+
+/**
+ * Generate a professionally styled flat-layout PDF.
+ * Features: branded header, member info box, section group banners,
+ * checkbox rendering, conditional field hiding, readable labels,
+ * page footers with branding and page numbers.
+ */
+export async function generateFlatLayoutPdf(
+  formDef: any,
+  submission_data: Record<string, any>,
+  applicant_name: string | undefined,
+  signatureMetadata?: { timestamp?: string; ip_address?: string; user_agent?: string },
+  rnSignatureMetadata?: { signature_base64?: string }
+): Promise<NextResponse> {
+  // Auto-populate RN evaluator fields from stored metadata before rendering
+  if (rnSignatureMetadata?.signature_base64) {
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    for (const section of formDef.sections || []) {
+      for (const field of section.fields || []) {
+        if ((field as any).auto_populate_rn === true) {
+          if (field.type === 'signature' && !submission_data[field.field_id]) {
+            submission_data[field.field_id] = rnSignatureMetadata.signature_base64;
+          } else if (field.type === 'date' && !submission_data[field.field_id]) {
+            submission_data[field.field_id] = todayStr;
+          }
+        }
+      }
+    }
+  }
+
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontItalic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+
+  const PAGE_WIDTH = 612;
+  const PAGE_HEIGHT = 792;
+  const MARGIN_LEFT = 48;
+  const MARGIN_RIGHT = 48;
+  const MARGIN_TOP = 50;
+  const MARGIN_BOTTOM = 55;
+  const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+
+  // Brand colors
+  const BRAND_TEAL = rgb(0.06, 0.46, 0.43);
+  const BRAND_TEAL_LIGHT = rgb(0.91, 0.97, 0.96);
+  const BRAND_TEAL_MED = rgb(0.75, 0.90, 0.88);
+  const TEXT_PRIMARY = rgb(0.12, 0.12, 0.12);
+  const TEXT_SECONDARY = rgb(0.35, 0.35, 0.35);
+  const TEXT_MUTED = rgb(0.55, 0.55, 0.55);
+  const BORDER_LIGHT = rgb(0.85, 0.85, 0.85);
+  const BG_LIGHT_GRAY = rgb(0.965, 0.965, 0.965);
+  const CHECK_GREEN = rgb(0.13, 0.55, 0.13);
+
+  const HEADING_SIZE = 12;
+  const SECTION_GROUP_SIZE = 10;
+  const BODY_SIZE = 9.5;
+  const SMALL_SIZE = 7.5;
+  const LINE_HEIGHT = 1.35;
+
+  let currentPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let yPos = PAGE_HEIGHT - MARGIN_TOP;
+  let pageCount = 1;
+  let lastSectionGroup = '';
+
+  const safeFormName = sanitizeText(formDef.form_name) || 'Untitled Form';
+
+  // ── Page management helpers ──
+
+  function drawPageFooter(page: PDFPage, pageNum: number): void {
+    page.drawLine({
+      start: { x: MARGIN_LEFT, y: 38 },
+      end: { x: PAGE_WIDTH - MARGIN_RIGHT, y: 38 },
+      thickness: 0.5,
+      color: BRAND_TEAL_MED,
+    });
+    // Left: company/brand
+    try {
+      page.drawText('KodaConnect', {
+        x: MARGIN_LEFT, y: 26, size: 7, font: fontBold, color: BRAND_TEAL,
+      });
+    } catch { /* skip */ }
+    // Center: form name
+    try {
+      const fnWidth = font.widthOfTextAtSize(safeFormName, 7);
+      page.drawText(safeFormName, {
+        x: (PAGE_WIDTH - fnWidth) / 2, y: 26, size: 7, font, color: TEXT_MUTED,
+      });
+    } catch { /* skip */ }
+  }
+
+  function newPage(): PDFPage {
+    currentPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    yPos = PAGE_HEIGHT - MARGIN_TOP;
+    pageCount++;
+    return currentPage;
+  }
+
+  function ensureSpace(needed: number): void {
+    if (yPos - needed < MARGIN_BOTTOM) {
+      newPage();
+    }
+  }
+
+  function wrapText(text: string, f: PDFFont, fontSize: number, maxWidth: number): string[] {
+    const lines: string[] = [];
+    const safeText = sanitizeText(text);
+    if (!safeText) return [''];
+    const paragraphs = safeText.split('\n');
+    for (const paragraph of paragraphs) {
+      if (paragraph.trim() === '') { lines.push(''); continue; }
+      const words = paragraph.split(/\s+/);
+      let currentLine = '';
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        try {
+          const testWidth = f.widthOfTextAtSize(testLine, fontSize);
+          if (testWidth > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        } catch {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+    }
+    return lines.length > 0 ? lines : [''];
+  }
+
+  /**
+   * Replace {{template_variable}} placeholders in section content
+   * with actual values from the submission data.
+   */
+  function replaceTemplateVariables(content: string, data: Record<string, any>, fields: any[]): string {
+    if (!content) return content;
+    return content.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+      const trimmed = varName.trim();
+      // Direct match in submission data
+      if (data[trimmed] !== undefined && data[trimmed] !== null && data[trimmed] !== '') {
+        let val = String(data[trimmed]);
+        // Auto-capitalize if it looks like a name field
+        if (isNameField(trimmed)) {
+          val = capitalizeName(val);
+        }
+        return val;
+      }
+      // Try to find a field whose field_id ends with this variable name
+      for (const field of fields) {
+        const fid = field.field_id || field.id || '';
+        if (fid === trimmed || fid.endsWith('__' + trimmed) || fid.endsWith('_' + trimmed)) {
+          const fieldVal = data[fid];
+          if (fieldVal !== undefined && fieldVal !== null && fieldVal !== '') {
+            let val = String(fieldVal);
+            if (isNameField(fid)) val = capitalizeName(val);
+            return val;
+          }
+        }
+      }
+      // Fallback: use applicant_name if the variable looks name-related
+      if (isNameField(trimmed) && applicant_name) {
+        return capitalizeName(applicant_name);
+      }
+      return ''; // Remove un-replaced variables instead of showing raw {{...}}
+    });
+  }
+
+  /**
+   * Check if a field ID looks like a name field based on common patterns
+   */
+  function isNameField(fieldId: string): boolean {
+    const lower = (fieldId || '').toLowerCase();
+    return (
+      lower.includes('_name') ||
+      lower.includes('print_name') ||
+      lower.includes('full_name') ||
+      lower.includes('first_name') ||
+      lower.includes('last_name') ||
+      lower.endsWith('_name')
+    );
+  }
+
+  /**
+   * Estimate how much vertical space a section's content will take.
+   * Used to decide if a section is "short" and can share a page.
+   */
+  function estimateSectionHeight(section: any): number {
+    let height = 24; // section heading
+    if (section.content && typeof section.content === 'string') {
+      const textLength = section.content.replace(/<[^>]*>/g, '').length;
+      const linesEstimate = Math.ceil(textLength / 80);
+      height += linesEstimate * (BODY_SIZE * LINE_HEIGHT);
+    }
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+    height += fields.length * (BODY_SIZE * LINE_HEIGHT + 4);
+    return height;
+  }
+
+  function drawWrappedTextBlock(text: string, x: number, f: PDFFont, fontSize: number, maxWidth: number, color = TEXT_PRIMARY): void {
+    const safeText = sanitizeText(text);
+    if (!safeText) return;
+    const lines = wrapText(safeText, f, fontSize, maxWidth);
+    const lineSpacing = fontSize * LINE_HEIGHT;
+    for (const line of lines) {
+      ensureSpace(lineSpacing + 2);
+      try {
+        currentPage.drawText(line || '', { x, y: yPos - fontSize, size: fontSize, font: f, color });
+      } catch { /* skip */ }
+      yPos -= lineSpacing;
+    }
+  }
+
+  // ── Identify header info fields ──
+  // Try to extract key fields for the summary box (member name, ID, DOB, etc.)
+  const metadata = formDef.metadata || {};
+  const participantNameField = metadata.participant_name_field || null;
+  const chwNameField = metadata.chw_name_field || null;
+
+  // Collect all fields to find header-worthy ones
+  const sections = Array.isArray(formDef.sections) ? formDef.sections : [];
+  const allFields: any[] = [];
+  for (const section of sections) {
+    if (Array.isArray(section.fields)) {
+      for (const field of section.fields) {
+        allFields.push(field);
+      }
+    }
+  }
+
+  // Auto-detect header fields by common patterns
+  const headerFieldIds = new Set<string>();
+  const headerInfo: Record<string, { label: string; value: string }> = {};
+
+  function findAndAddHeaderField(patterns: string[], displayLabel: string): void {
+    for (const field of allFields) {
+      const fid = (field.field_id || field.id || '').toLowerCase();
+      const flabel = (field.label || '').toLowerCase();
+      const fieldKey = field.field_id || field.id || '';
+      for (const pattern of patterns) {
+        if (fid.includes(pattern) || flabel.includes(pattern)) {
+          const val = submission_data[fieldKey];
+          if (val !== undefined && val !== null && val !== '') {
+            let displayVal = String(val);
+            if (field.type === 'date') displayVal = formatDateValue(displayVal);
+            if (field.type === 'time') displayVal = formatTimeValue(displayVal);
+            headerFieldIds.add(fieldKey);
+            headerInfo[displayLabel] = { label: displayLabel, value: displayVal };
+            return;
+          }
+        }
+      }
+    }
+  }
+
+  // Build participant name from participant_name_field or common patterns
+  if (participantNameField && submission_data[participantNameField]) {
+    headerFieldIds.add(participantNameField);
+    // Try to find last name field nearby
+    const firstNameVal = submission_data[participantNameField];
+    let fullName = String(firstNameVal);
+    const lastNameField = allFields.find((f: any) =>
+      (f.field_id || f.id || '').toLowerCase().includes('last_name') &&
+      (f.field_id || f.id || '').toLowerCase().includes('member')
+    );
+    const lastNameKey = lastNameField ? (lastNameField.field_id || lastNameField.id || '') : '';
+    if (lastNameField && submission_data[lastNameKey]) {
+      fullName += ' ' + submission_data[lastNameKey];
+      headerFieldIds.add(lastNameKey);
+    }
+    headerInfo['Member'] = { label: 'Member', value: sanitizeText(fullName) };
+  } else {
+    findAndAddHeaderField(['applicant_name', 'member_name', 'full_name', 'participant_name'], 'Member');
+  }
+
+  if (chwNameField && submission_data[chwNameField]) {
+    headerFieldIds.add(chwNameField);
+    headerInfo['CHW'] = { label: 'CHW', value: sanitizeText(String(submission_data[chwNameField])) };
+  }
+
+  findAndAddHeaderField(['member_id', 'altruista', 'participant_id'], 'Member ID');
+  findAndAddHeaderField(['member_dob', 'date_of_birth', 'dob'], 'DOB');
+  findAndAddHeaderField(['member_phone', 'phone_number', 'contact_phone'], 'Phone');
+  // Visit date, start time, and end time are NOT shown in the header box.
+  // They render inline in their respective sections (Questions 2-3 and 21).
+
+  const hasHeaderInfo = Object.keys(headerInfo).length > 0;
+
+  // ====== RENDER: HEADER BAR ======
+  currentPage.drawRectangle({
+    x: 0, y: PAGE_HEIGHT - 80,
+    width: PAGE_WIDTH, height: 80,
+    color: BRAND_TEAL,
+  });
+
+  try {
+    currentPage.drawText(safeFormName, {
+      x: MARGIN_LEFT, y: PAGE_HEIGHT - 35,
+      size: 18, font: fontBold, color: rgb(1, 1, 1),
+    });
+  } catch { /* skip */ }
+
+  // Subtitle with applicant/company info
+  const subtitle = applicant_name
+    ? `Submitted by ${sanitizeText(applicant_name)}`
+    : 'Form Submission Report';
+  try {
+    currentPage.drawText(subtitle, {
+      x: MARGIN_LEFT, y: PAGE_HEIGHT - 55,
+      size: 9, font, color: rgb(0.85, 0.95, 0.94),
+    });
+  } catch { /* skip */ }
+
+  yPos = PAGE_HEIGHT - 95;
+
+  // ====== RENDER: MEMBER INFO SUMMARY BOX ======
+  if (hasHeaderInfo) {
+    const infoEntries = Object.values(headerInfo);
+    const rowCount = Math.ceil(infoEntries.length / 2);
+    const infoBoxHeight = Math.max(rowCount * 16 + 12, 44);
+    ensureSpace(infoBoxHeight + 10);
+
+    currentPage.drawRectangle({
+      x: MARGIN_LEFT, y: yPos - infoBoxHeight,
+      width: CONTENT_WIDTH, height: infoBoxHeight,
+      color: BRAND_TEAL_LIGHT,
+      borderColor: BRAND_TEAL_MED,
+      borderWidth: 0.5,
+    });
+
+    const boxPad = 10;
+    const col1X = MARGIN_LEFT + boxPad;
+    const col2X = MARGIN_LEFT + CONTENT_WIDTH * 0.5 + boxPad;
+    let infoY = yPos - 14;
+
+    for (let i = 0; i < infoEntries.length; i += 2) {
+      // Left column
+      const entry1 = infoEntries[i];
+      try {
+        currentPage.drawText(`${entry1.label}:`, {
+          x: col1X, y: infoY, size: 8, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const labelW = fontBold.widthOfTextAtSize(`${entry1.label}: `, 8);
+        currentPage.drawText(entry1.value, {
+          x: col1X + labelW, y: infoY,
+          size: entry1.label === 'Member' ? 9.5 : 9,
+          font: entry1.label === 'Member' ? fontBold : font,
+          color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+
+      // Right column
+      if (i + 1 < infoEntries.length) {
+        const entry2 = infoEntries[i + 1];
+        try {
+          currentPage.drawText(`${entry2.label}:`, {
+            x: col2X, y: infoY, size: 8, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const labelW2 = fontBold.widthOfTextAtSize(`${entry2.label}: `, 8);
+          currentPage.drawText(entry2.value, {
+            x: col2X + labelW2, y: infoY, size: 9, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+
+      infoY -= 16;
+    }
+
+    yPos -= infoBoxHeight + 14;
+  } else {
+    yPos -= 8;
+  }
+
+  // ====== FIND SIGNATURE IMAGE ======
+  // Look for a signature field value (base64 PNG) in the submission data.
+  // This will be applied to every section that the Electronic Signature
+  // Acknowledgement covers.
+  let globalSignatureImage: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null;
+  let globalSignatureFieldId = '';
+  let signatureSectionTitle = ''; // The section where the signature was originally captured
+
+  for (const field of allFields) {
+    const fid = field.field_id || field.id || '';
+    const val = submission_data[fid];
+    if (field.type === 'signature' && val && typeof val === 'string' && val.startsWith('data:image')) {
+      try {
+        const base64Data = val.split(',')[1];
+        const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+        globalSignatureImage = await pdfDoc.embedPng(imageBytes);
+        globalSignatureFieldId = fid;
+        // Find which section this signature field belongs to
+        for (const sec of sections) {
+          if (Array.isArray(sec.fields) && sec.fields.some((f: any) => (f.field_id || f.id) === fid)) {
+            signatureSectionTitle = sec.title || '';
+            break;
+          }
+        }
+        break; // Use the first signature found
+      } catch {
+        // Signature embed failed, skip
+      }
+    }
+  }
+
+  // ── Resolve auto_fill_from for signature fields ──
+  // The server-side auto-fill (resolveAutoFillForOverlay) only runs for
+  // replica sections. For generated sections, we need to resolve
+  // auto_fill_from here so that staff signature fields (e.g., employer
+  // signature linked to HR review manager signature) get the correct value.
+  for (const field of allFields) {
+    const fid = field.field_id || field.id || '';
+    const autoFillSource = (field as any).auto_fill_from;
+    if (field.type === 'signature' && autoFillSource && !submission_data[fid]) {
+      const sourceVal = submission_data[autoFillSource];
+      if (sourceVal && typeof sourceVal === 'string' && sourceVal.startsWith('data:image')) {
+        submission_data[fid] = sourceVal;
+      }
+    }
+  }
+
+  // ── Signature application allow-list ──
+  // These section title keywords match the documents listed on the
+  // Electronic Signature Acknowledgement page. Only sections whose title
+  // contains one of these keywords will receive the auto-applied signature.
+  // This mirrors the checkbox list the applicant sees and agrees to.
+  const signatureAllowKeywords: string[] = [
+    'availability sheet',
+    'declination of influenza',
+    'informed consent for hbv',
+    'hbv vaccination',
+    'engerix',
+    'health assessment',
+    'tuberculosis',
+    'employment application',
+    'background investigation',
+    'criminal history',
+    'hcr consent',
+    'position description',
+    'hipaa',
+    'patient confidentiality',
+    'id badge',
+    'employee policies',
+    'sexual harassment',
+    'notice and acknowledgement of wage',
+    'notice & acknowledgement of wage',
+    'wage rate',
+    'receipt of employee handbook',
+    'overtime',
+    'health insurance eligibility',
+    'paid sick leave',
+    'safe and sick leave',
+    'arbitration',
+    'confidentiality & non-solicitation',
+    'confidentiality and non-solicitation',
+    'non-solicit',
+    'mass transit',
+    'commuter benefits',
+    'direct deposit',
+    'electronic visit verification',
+    'evv attestation',
+    'one-employee shift',
+    'travel time',
+    'compliance program',
+    'driving policy',
+    'supervisory visit',
+    'competency evaluation',
+  ];
+
+  /**
+   * Check whether a section title matches the signature allow-list.
+   * Returns true when the signature should be auto-applied.
+   */
+  function shouldApplySignature(title: string): boolean {
+    const lower = (title || '').toLowerCase();
+    return signatureAllowKeywords.some((kw) => lower.includes(kw));
+  }
+
+  /**
+   * Draw the global signature at the current position in the PDF.
+   * Used to apply the captured signature to all sections.
+   */
+  async function drawGlobalSignature(): Promise<void> {
+    if (!globalSignatureImage) return;
+
+    const sigWidth = Math.min(160, CONTENT_WIDTH * 0.35);
+    const sigHeight = sigWidth * (globalSignatureImage.height / globalSignatureImage.width);
+    const sigBlockHeight = sigHeight + 24; // signature + label
+
+    ensureSpace(sigBlockHeight);
+    yPos -= 6;
+
+    // "Signature:" label
+    try {
+      currentPage.drawText('Signature:', {
+        x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+        size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+      });
+    } catch { /* skip */ }
+    yPos -= BODY_SIZE * LINE_HEIGHT;
+
+    // Draw the signature image
+    currentPage.drawImage(globalSignatureImage, {
+      x: MARGIN_LEFT + 8,
+      y: yPos - sigHeight,
+      width: sigWidth,
+      height: sigHeight,
+    });
+    yPos -= sigHeight + 4;
+  }
+
+  /**
+   * Render Supervisory Visit Report table with skills matrix.
+   * Matches the reference form: Required Skill | S/U | Method (I/J/O) | Comments
+   * Field IDs use 'svr__' prefix (e.g., svr__bathing, svr__bathing_method, svr__bathing_comments)
+   */
+  async function renderSupervisoryVisitTable(section: any): Promise<void> {
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+
+    // Render Employee Name and Level before the table
+    const empName = submission_data['svr__employee_name'] || '';
+    const empLevel = submission_data['svr__level'] || '';
+    if (empName || empLevel) {
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+      ensureSpace(lineSpacing * 2 + 8);
+      if (empName) {
+        try {
+          currentPage.drawText('Employee Name:', {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const lw = fontBold.widthOfTextAtSize('Employee Name: ', BODY_SIZE);
+          currentPage.drawText(sanitizeText(String(empName)), {
+            x: MARGIN_LEFT + 8 + lw + 4, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+        // Level on same line, right-aligned
+        if (empLevel) {
+          try {
+            const lvlLabel = 'Level: ';
+            const lvlText = sanitizeText(String(empLevel));
+            const lvlLabelW = fontBold.widthOfTextAtSize(lvlLabel, BODY_SIZE);
+            const lvlTextW = font.widthOfTextAtSize(lvlText, BODY_SIZE);
+            const lvlX = PAGE_WIDTH - MARGIN_RIGHT - lvlLabelW - lvlTextW - 8;
+            currentPage.drawText(lvlLabel, {
+              x: lvlX, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+            });
+            currentPage.drawText(lvlText, {
+              x: lvlX + lvlLabelW, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font, color: TEXT_PRIMARY,
+            });
+          } catch { /* skip */ }
+        }
+        yPos -= lineSpacing + 2;
+      }
+    }
+    yPos -= 6;
+
+    // Skills in order — matching JSON field IDs (svr__ prefix)
+    // Groups: 'observation' = Bathing→Ambulation (V in O, I+J blacked out)
+    //         'interview'   = TPR&BP→Emergency (V in I, J+O empty)
+    const skills: { key: string; label: string; group: 'observation' | 'interview'; comment?: string }[] = [
+      { key: 'bathing', label: 'Bathing: tub, shower, sponge', group: 'observation' },
+      { key: 'shampoo', label: 'Shampoo: Bed, Sink or Tub', group: 'observation' },
+      { key: 'nail_care', label: 'Nail Care: Fingers & Toes', group: 'observation' },
+      { key: 'skin_care', label: 'Skin Care: Lotion & Massage', group: 'observation' },
+      { key: 'oral_hygiene', label: 'Oral Hygiene', group: 'observation' },
+      { key: 'toileting', label: 'Toileting & Elimination\n (Bedpan, Urinal, Commode)', group: 'observation' },
+      { key: 'transfer_techniques', label: 'Transfer Techniques', group: 'observation' },
+      { key: 'positioning', label: 'Positioning', group: 'observation' },
+      { key: 'range_of_motion', label: 'Range of Motion', group: 'observation', comment: 'N/A for PCAs' },
+      { key: 'ambulation', label: 'Ambulation: Alone, with aids', group: 'observation' },
+      { key: 'tpr_bp', label: 'TPR&BP: Read and Record', group: 'interview', comment: 'N/A for PCAs' },
+      { key: 'infection_control', label: 'Follows Infection Control Procedures', group: 'interview' },
+      { key: 'managed_diets', label: 'Understands elements of managed diets\n &fluid intake', group: 'interview' },
+      { key: 'clean_environment', label: 'Maintenance of clean and safe environment', group: 'interview' },
+      { key: 'client_needs', label: "Understands client's physical, emotional &\n developmental needs", group: 'interview' },
+      { key: 'patient_records', label: 'Maintains records of patient activities performed', group: 'interview' },
+      { key: 'reports_changes', label: 'Reports changes in patient condition and environment', group: 'interview' },
+      { key: 'emergency_procedures', label: 'Understand emergency procedure Pt.rights\n and confidentiality', group: 'interview' },
+    ];
+
+    // Table dimensions — columns: Skill | Methods (I | J | O) | Comments
+    const tableLeftX = MARGIN_LEFT + 4;
+    const totalWidth = CONTENT_WIDTH - 4;
+    const skillColW = totalWidth * 0.48;
+    const iColW = 22;   // narrow sub-column for I
+    const jColW = 22;   // narrow sub-column for J
+    const oColW = 22;   // narrow sub-column for O
+    const commentsColW = totalWidth - skillColW - iColW - jColW - oColW;
+
+    const headerHeight = 28; // taller header for two-line "Methods (Insert S or U)" + "I J O"
+    const rowHeight = 16;
+    const fontSize = 7.5;
+    const headerFontSize = 7;
+
+    const tableHeight = headerHeight + (skills.length * rowHeight);
+    ensureSpace(tableHeight + 80); // extra space for signature block below
+
+    // ── Header ──
+    let currentY = yPos - headerHeight;
+    currentPage.drawRectangle({
+      x: tableLeftX, y: currentY,
+      width: totalWidth, height: headerHeight,
+      color: BRAND_TEAL,
+    });
+
+    // "Required Skill" in left column
+    try {
+      currentPage.drawText('Required Skill', {
+        x: tableLeftX + 4, y: currentY + 10,
+        size: 8, font: fontBold, color: rgb(1, 1, 1),
+      });
+    } catch { /* skip */ }
+
+    // "Methods" header spanning I+J+O, with "(Insert S or U)" below
+    const methodsStartX = tableLeftX + skillColW;
+    const methodsTotalW = iColW + jColW + oColW;
+    try {
+      const mLabel = 'Methods';
+      const mw = fontBold.widthOfTextAtSize(mLabel, headerFontSize);
+      currentPage.drawText(mLabel, {
+        x: methodsStartX + (methodsTotalW - mw) / 2, y: currentY + 18,
+        size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+      });
+      const subLabel = '(Insert S or U)';
+      const sw = font.widthOfTextAtSize(subLabel, 6);
+      currentPage.drawText(subLabel, {
+        x: methodsStartX + (methodsTotalW - sw) / 2, y: currentY + 11,
+        size: 6, font, color: rgb(1, 1, 1),
+      });
+    } catch { /* skip */ }
+    // Sub-column labels: I, J, O
+    const subCols = [
+      { label: 'I', x: methodsStartX, w: iColW },
+      { label: 'J', x: methodsStartX + iColW, w: jColW },
+      { label: 'O', x: methodsStartX + iColW + jColW, w: oColW },
+    ];
+    for (const sc of subCols) {
+      try {
+        const tw = fontBold.widthOfTextAtSize(sc.label, headerFontSize);
+        currentPage.drawText(sc.label, {
+          x: sc.x + (sc.w - tw) / 2, y: currentY + 3,
+          size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+        });
+      } catch { /* skip */ }
+    }
+
+    // "Comments" header
+    try {
+      currentPage.drawText('Comments', {
+        x: tableLeftX + skillColW + methodsTotalW + 4, y: currentY + 10,
+        size: 8, font: fontBold, color: rgb(1, 1, 1),
+      });
+    } catch { /* skip */ }
+
+    yPos -= headerHeight;
+    currentY = yPos;
+
+    // ── Rows ──
+    const BLACK = rgb(0.1, 0.1, 0.1);
+    for (let i = 0; i < skills.length; i++) {
+      const { key, label, group, comment } = skills[i];
+      const isEven = i % 2 === 0;
+      const rowBg = isEven ? rgb(1, 1, 1) : rgb(0.97, 0.97, 0.97);
+
+      // Row background
+      currentPage.drawRectangle({
+        x: tableLeftX, y: currentY - rowHeight,
+        width: totalWidth, height: rowHeight,
+        color: rowBg,
+      });
+
+      // Field IDs
+      const commFieldId = `svr__${key}_comments`;
+      const commValue = submission_data[commFieldId];
+
+      const textY = currentY - fontSize - 3;
+
+      // Skill label (handle multi-line with \n)
+      const labelLines = label.split('\n');
+      try {
+        if (labelLines.length === 1) {
+          const truncLabel = label.length > 60 ? label.substring(0, 58) + '..' : label;
+          currentPage.drawText(sanitizeText(truncLabel), {
+            x: tableLeftX + 3, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } else {
+          // Two-line label — smaller font, tighter spacing
+          const smallFont = 6.5;
+          currentPage.drawText(sanitizeText(labelLines[0]), {
+            x: tableLeftX + 3, y: currentY - smallFont - 1, size: smallFont, font, color: TEXT_PRIMARY,
+          });
+          currentPage.drawText(sanitizeText(labelLines[1].trim()), {
+            x: tableLeftX + 6, y: currentY - smallFont * 2 - 2, size: smallFont, font, color: TEXT_PRIMARY,
+          });
+        }
+      } catch { /* skip */ }
+
+      // I, J, O cells
+      const iCellX = tableLeftX + skillColW;
+      const jCellX = iCellX + iColW;
+      const oCellX = jCellX + jColW;
+
+      if (group === 'observation') {
+        // I and J blacked out, V in O
+        currentPage.drawRectangle({
+          x: iCellX, y: currentY - rowHeight,
+          width: iColW, height: rowHeight,
+          color: BLACK,
+        });
+        currentPage.drawRectangle({
+          x: jCellX, y: currentY - rowHeight,
+          width: jColW, height: rowHeight,
+          color: BLACK,
+        });
+        // V in O column
+        try {
+          const vw = fontBold.widthOfTextAtSize('V', fontSize);
+          currentPage.drawText('V', {
+            x: oCellX + (oColW - vw) / 2, y: textY,
+            size: fontSize, font: fontBold, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      } else {
+        // Interview group: V in I, J and O empty (not blacked out)
+        try {
+          const vw = fontBold.widthOfTextAtSize('V', fontSize);
+          currentPage.drawText('V', {
+            x: iCellX + (iColW - vw) / 2, y: textY,
+            size: fontSize, font: fontBold, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+
+      // Comments — use submitted value or default comment
+      const commText = commValue ? sanitizeText(String(commValue)) : (comment || '');
+      if (commText) {
+        const commX = tableLeftX + skillColW + methodsTotalW + 3;
+        const truncComm = commText.length > 30 ? commText.substring(0, 28) + '..' : commText;
+        try {
+          currentPage.drawText(truncComm, {
+            x: commX, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+
+      // Grid lines — horizontal
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: currentY },
+        end: { x: tableLeftX + totalWidth, y: currentY },
+        thickness: 0.5, color: BORDER_LIGHT,
+      });
+      // Vertical grid lines for all columns
+      for (const vx of [
+        tableLeftX + skillColW,
+        iCellX + iColW,
+        jCellX + jColW,
+        oCellX + oColW,
+      ]) {
+        currentPage.drawLine({
+          start: { x: vx, y: currentY },
+          end: { x: vx, y: currentY - rowHeight },
+          thickness: 0.5, color: BORDER_LIGHT,
+        });
+      }
+
+      currentY -= rowHeight;
+    }
+
+    // Final border
+    currentPage.drawLine({
+      start: { x: tableLeftX, y: currentY },
+      end: { x: tableLeftX + totalWidth, y: currentY },
+      thickness: 0.5, color: BORDER_LIGHT,
+    });
+    currentPage.drawRectangle({
+      x: tableLeftX, y: currentY,
+      width: totalWidth, height: yPos - currentY,
+      borderColor: BORDER_LIGHT, borderWidth: 0.5,
+      opacity: 0,
+    });
+
+    yPos = currentY - 12;
+
+    // ── Signature block: Signature | R.N. | Date | Agency/Facility ──
+    // Render all on same line to match reference layout and prevent page overflow
+    const sigBlockY = yPos;
+    const sigValue = submission_data['svr__evaluator_signature'] || formDef.metadata?.rn_evaluator_signature;
+    const evalDate = submission_data['svr__evaluator_date'];
+    const agencyName = 'X-TREME CARE';
+
+    // Signature label + image
+    ensureSpace(60);
+    try {
+      currentPage.drawText('Nurse Evaluator Signature', {
+        x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+        size: BODY_SIZE - 1, font: fontBold, color: TEXT_SECONDARY,
+      });
+    } catch { /* skip */ }
+    yPos -= BODY_SIZE * LINE_HEIGHT + 2;
+
+    if (sigValue && typeof sigValue === 'string' && sigValue.startsWith('data:image')) {
+      try {
+        const base64Data = sigValue.split(',')[1];
+        const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+        const signatureImage = await pdfDoc.embedPng(imageBytes);
+        const sigWidth = Math.min(160, CONTENT_WIDTH * 0.3);
+        const sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+        currentPage.drawImage(signatureImage, {
+          x: MARGIN_LEFT + 8, y: yPos - sigHeight,
+          width: sigWidth, height: sigHeight,
+        });
+        yPos -= sigHeight + 2;
+      } catch {
+        yPos -= 20;
+      }
+    } else {
+      // Blank signature line
+      currentPage.drawLine({
+        start: { x: MARGIN_LEFT + 8, y: yPos },
+        end: { x: MARGIN_LEFT + 180, y: yPos },
+        thickness: 0.5, color: BORDER_LIGHT,
+      });
+      yPos -= 8;
+    }
+
+    // R.N. label, Date, and Agency on same line below signature
+    const footerY = yPos - BODY_SIZE;
+    const colGap = CONTENT_WIDTH / 3;
+    try {
+      currentPage.drawText('R.N.', {
+        x: MARGIN_LEFT + 8 + 80, y: footerY,
+        size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+      });
+    } catch { /* skip */ }
+    if (evalDate) {
+      try {
+        const dateStr = formatDateValue(String(evalDate));
+        currentPage.drawText(dateStr, {
+          x: MARGIN_LEFT + 8 + colGap + 40, y: footerY,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+      try {
+        currentPage.drawText('Date', {
+          x: MARGIN_LEFT + 8 + colGap + 40, y: footerY - BODY_SIZE - 2,
+          size: 7, font: fontBold, color: TEXT_SECONDARY,
+        });
+      } catch { /* skip */ }
+    }
+    try {
+      currentPage.drawText(agencyName, {
+        x: MARGIN_LEFT + 8 + colGap * 2, y: footerY,
+        size: BODY_SIZE, font, color: TEXT_PRIMARY,
+      });
+      currentPage.drawText('Agency/Facility Name', {
+        x: MARGIN_LEFT + 8 + colGap * 2, y: footerY - BODY_SIZE - 2,
+        size: 7, font: fontBold, color: TEXT_SECONDARY,
+      });
+    } catch { /* skip */ }
+
+    yPos = footerY - BODY_SIZE * 2 - 8;
+  }
+
+  /**
+   * Render competency test questions with proper text wrapping and grading indicators.
+   * Shows each question fully wrapped, the caregiver's answer, and for graded forms:
+   * green checkmark for correct, red X with correct answer for incorrect.
+   * Called once per competency_test_part section.
+   */
+  /**
+   * Compute exam score across all competency test sections.
+   * Reusable helper for both top-of-test and bottom-of-test summary boxes.
+   */
+  function computeExamScore() {
+    const meta = formDef.metadata || {};
+    const answerKey: Record<string, string> = meta.answer_key || {};
+    const allSections = Array.isArray(formDef.sections) ? formDef.sections : [];
+    let totalCorrect = 0;
+    let totalIncorrect = 0;
+    let totalUnanswered = 0;
+    let totalQuestions = 0;
+
+    for (const sec of allSections) {
+      if (!sec.fields) continue;
+      for (const f of sec.fields) {
+        const fid = f.field_id || f.id || '';
+        const fMatch = fid.match(/_q(\d+[a-c]?)$/);
+        if (!fMatch) continue;
+        const qS = fMatch[1];
+        const correctCode = (f as any).correct_answer
+          || answerKey[fid]
+          || answerKey[String(parseInt(qS, 10))]
+          || answerKey[`q${qS}`]
+          || '';
+        if (!correctCode) continue; // Skip ungraded questions (e.g., Q67 free text)
+        totalQuestions++;
+        const uv = submission_data[fid];
+        const answered = uv !== undefined && uv !== null && uv !== '';
+        if (!answered) {
+          totalUnanswered++;
+        } else if (String(uv).toLowerCase().trim() === correctCode.toLowerCase().trim()) {
+          totalCorrect++;
+        } else {
+          totalIncorrect++;
+        }
+      }
+    }
+
+    const passingScore = meta.passing_score ?? 85;
+    const scorePct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+    const passed = scorePct >= passingScore;
+    return { totalCorrect, totalIncorrect, totalUnanswered, totalQuestions, scorePct, passingScore, passed };
+  }
+
+  /** Draw a score summary box (used at top of Part 1 and bottom of last part). */
+  function drawScoreSummaryBox(compact: boolean = false) {
+    const { totalCorrect, totalIncorrect, totalUnanswered, totalQuestions, scorePct, passingScore, passed } = computeExamScore();
+    if (totalQuestions === 0) return;
+
+    const scoreTextColor = passed ? CHECK_GREEN : rgb(0.85, 0.15, 0.15);
+    const boxColor = passed ? rgb(0.94, 0.99, 0.94) : rgb(0.99, 0.94, 0.94);
+    const boxBorder = passed ? rgb(0.73, 0.92, 0.73) : rgb(0.95, 0.73, 0.73);
+
+    if (compact) {
+      // Compact single-line box for top of test
+      const boxHeight = 28;
+      ensureSpace(boxHeight + 10);
+      yPos -= 6;
+
+      currentPage.drawRectangle({
+        x: MARGIN_LEFT, y: yPos - boxHeight,
+        width: CONTENT_WIDTH, height: boxHeight,
+        color: boxColor,
+        borderColor: boxBorder, borderWidth: 1,
+      });
+
+      try {
+        const statusStr = passed ? 'PASSED' : 'DID NOT PASS';
+        const summaryStr = `${scorePct}%  ${statusStr}  \u2014  ${totalCorrect} correct, ${totalIncorrect} incorrect out of ${totalQuestions} questions (passing: ${passingScore}%)`;
+        currentPage.drawText(summaryStr, {
+          x: MARGIN_LEFT + 12, y: yPos - 18,
+          size: 9, font: fontBold, color: scoreTextColor,
+        });
+      } catch { /* skip */ }
+
+      yPos -= boxHeight + 6;
+    } else {
+      // Full score summary box for bottom of test
+      const boxHeight = 70;
+      ensureSpace(boxHeight + 20);
+      yPos -= 12;
+
+      currentPage.drawRectangle({
+        x: MARGIN_LEFT, y: yPos - boxHeight,
+        width: CONTENT_WIDTH, height: boxHeight,
+        color: boxColor,
+        borderColor: boxBorder, borderWidth: 1.5,
+      });
+
+      try {
+        const scoreStr = `${scorePct}%`;
+        const scoreW = fontBold.widthOfTextAtSize(scoreStr, 28);
+        currentPage.drawText(scoreStr, {
+          x: MARGIN_LEFT + 20, y: yPos - 38,
+          size: 28, font: fontBold, color: scoreTextColor,
+        });
+
+        const statusStr = passed ? 'PASSED' : 'DID NOT PASS';
+        currentPage.drawText(statusStr, {
+          x: MARGIN_LEFT + 20 + scoreW + 12, y: yPos - 30,
+          size: 14, font: fontBold, color: scoreTextColor,
+        });
+
+        const detailStr = `${totalCorrect} correct, ${totalIncorrect} incorrect out of ${totalQuestions} questions (passing: ${passingScore}%)`;
+        currentPage.drawText(detailStr, {
+          x: MARGIN_LEFT + 20 + scoreW + 12, y: yPos - 48,
+          size: 8.5, font, color: TEXT_SECONDARY,
+        });
+
+        if (totalUnanswered > 0) {
+          currentPage.drawText(`${totalUnanswered} question${totalUnanswered > 1 ? 's' : ''} unanswered`, {
+            x: MARGIN_LEFT + 20 + scoreW + 12, y: yPos - 60,
+            size: 8, font: fontItalic, color: rgb(0.75, 0.55, 0.0),
+          });
+        }
+      } catch { /* skip */ }
+
+      yPos -= boxHeight + 8;
+    }
+  }
+
+  async function renderCompetencyTestQuestions(section: any, isFirstPart: boolean, isLastPart: boolean): Promise<void> {
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+    const meta = formDef.metadata || {};
+    const answerKey: Record<string, string> = meta.answer_key || {};
+    const hasGrading = !!meta.auto_grade && Object.keys(answerKey).length > 0;
+
+    const questionFontSize = 8.5;
+    const optionFontSize = 8;
+    const lineSpacing = questionFontSize * LINE_HEIGHT;
+    const optionLineSpacing = optionFontSize * LINE_HEIGHT;
+    const questionIndent = MARGIN_LEFT + 6;
+    const optionIndent = MARGIN_LEFT + 24;      // a. b. c. d. text starts here
+    const optionLetterX = MARGIN_LEFT + 14;      // letter prefix position
+    const indicatorX = CONTENT_WIDTH + MARGIN_LEFT - 4; // right-align area for status
+    const maxQuestionWidth = CONTENT_WIDTH - 14;
+    const maxOptionWidth = CONTENT_WIDTH - 40;   // narrower for option text
+    const RED = rgb(0.85, 0.15, 0.15);
+
+    // ── Score Summary at top of first part ──
+    if (isFirstPart && hasGrading) {
+      drawScoreSummaryBox(true);
+    }
+
+    for (const field of fields) {
+      if (!field) continue;
+      const fieldId = field.field_id || field.id || '';
+      const fieldType = field.type || 'text';
+      const fieldValue = submission_data[fieldId];
+
+      // ── Handle signatures inline ──
+      if (fieldType === 'signature') {
+        ensureSpace(40);
+        const sigLabel = sanitizeText(field.label) || 'Signature';
+        try {
+          currentPage.drawText(`${sigLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+
+        if (fieldValue && typeof fieldValue === 'string' && fieldValue.startsWith('data:image')) {
+          try {
+            const base64Data = fieldValue.split(',')[1];
+            const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+            const signatureImage = await pdfDoc.embedPng(imageBytes);
+            const sigWidth = Math.min(200, CONTENT_WIDTH * 0.4);
+            const sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+            ensureSpace(sigHeight + 10);
+            currentPage.drawImage(signatureImage, {
+              x: MARGIN_LEFT + 8, y: yPos - sigHeight,
+              width: sigWidth, height: sigHeight,
+            });
+            yPos -= sigHeight + 4;
+          } catch {
+            drawWrappedTextBlock('[Signature provided]', MARGIN_LEFT + 16, fontItalic, BODY_SIZE, CONTENT_WIDTH - 24, TEXT_MUTED);
+          }
+        } else if (globalSignatureImage && shouldApplySignature(section.title || '')
+                   && ((field as any).signer_role || 'applicant') === 'applicant') {
+          // Only auto-apply the global (applicant) signature to applicant fields.
+          // Fields with signer_role 'hr_admin' or 'rn_evaluator' must be signed
+          // by the appropriate staff member during Review & Sign.
+          try {
+            const sigWidth = Math.min(200, CONTENT_WIDTH * 0.4);
+            const sigHeight = sigWidth * (globalSignatureImage.height / globalSignatureImage.width);
+            ensureSpace(sigHeight + 10);
+            currentPage.drawImage(globalSignatureImage, {
+              x: MARGIN_LEFT + 8, y: yPos - sigHeight,
+              width: sigWidth, height: sigHeight,
+            });
+            yPos -= sigHeight + 4;
+          } catch {
+            drawWrappedTextBlock('[Signature provided]', MARGIN_LEFT + 16, fontItalic, BODY_SIZE, CONTENT_WIDTH - 24, TEXT_MUTED);
+          }
+        } else {
+          currentPage.drawLine({
+            start: { x: MARGIN_LEFT + 8, y: yPos },
+            end: { x: MARGIN_LEFT + 208, y: yPos },
+            thickness: 0.5, color: BORDER_LIGHT,
+          });
+          yPos -= 8;
+        }
+        yPos -= 6;
+        continue;
+      }
+
+      // ── Handle date fields (e.g. "Caregiver Date:") ──
+      if (fieldType === 'date') {
+        ensureSpace(lineSpacing + 6);
+        const dateLabel = sanitizeText(field.label) || 'Date';
+        const dateVal = fieldValue ? sanitizeText(String(fieldValue)) : '--';
+        try {
+          currentPage.drawText(`${dateLabel}:  ${dateVal}`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing + 4;
+        continue;
+      }
+
+      // ── Extract question number from field ID ──
+      const qMatch = fieldId.match(/_q(\d+[a-c]?)$/);
+      if (!qMatch) continue;
+
+      const qSuffix = qMatch[1];
+      const questionLabel = sanitizeText(field.label) || `Question ${qSuffix}`;
+      const userAnswer = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? String(fieldValue).toLowerCase().trim() : '';
+
+      // Determine correct answer code
+      let correctCode = '';
+      if (hasGrading) {
+        correctCode = ((field as any).correct_answer
+          || answerKey[fieldId]
+          || answerKey[String(parseInt(qSuffix, 10))]
+          || answerKey[`q${qSuffix}`]
+          || '').toLowerCase().trim();
+      }
+
+      const isCorrect = userAnswer && correctCode && userAnswer === correctCode;
+      const hasOptions = Array.isArray(field.options) && field.options.length > 0;
+
+      // ── Estimate space needed ──
+      const qLines = wrapText(questionLabel, fontBold, questionFontSize, maxQuestionWidth);
+      let estHeight = (qLines.length * lineSpacing) + 6;
+      if (hasOptions) {
+        // Each option: ~1-2 lines
+        estHeight += field.options.length * (optionLineSpacing * 1.5 + 4);
+      } else {
+        estHeight += optionLineSpacing * 2;
+      }
+      ensureSpace(Math.min(estHeight, 120)); // cap at 120 to avoid forcing unnecessary page breaks
+
+      // ── Draw question text (wrapped, bold) ──
+      for (const line of qLines) {
+        try {
+          currentPage.drawText(line || '', {
+            x: questionIndent, y: yPos - questionFontSize,
+            size: questionFontSize, font: fontBold, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+      }
+      yPos -= 1;
+
+      // ── Draw all answer options with indicators ──
+      if (hasOptions && (fieldType === 'radio' || fieldType === 'select')) {
+        for (const opt of field.options) {
+          const optValue = (opt.value || '').toLowerCase().trim();
+          const optLabel = sanitizeText(opt.label || opt.value || '');
+          const isThisChosen = userAnswer === optValue;
+          const isThisCorrect = correctCode === optValue;
+
+          // Wrap option text
+          const optLines = wrapText(optLabel, font, optionFontSize, maxOptionWidth);
+          const optBlockHeight = optLines.length * optionLineSpacing + 3;
+          ensureSpace(optBlockHeight + 2);
+
+          // Determine styling for this option
+          let optFont = font;
+          let optColor = TEXT_PRIMARY;
+          let statusText = '';
+          let statusColor = TEXT_PRIMARY;
+          let bgColor: ReturnType<typeof rgb> | null = null;
+
+          if (hasGrading && correctCode) {
+            if (isThisChosen && isThisCorrect) {
+              // Correct selection — checkmark + bold
+              optFont = fontBold;
+              optColor = CHECK_GREEN;
+              statusText = '\u2713  [Correct - Selected]';
+              statusColor = CHECK_GREEN;
+              bgColor = rgb(0.94, 0.99, 0.94); // light green
+            } else if (isThisChosen && !isThisCorrect) {
+              // Wrong selection — X
+              optFont = font;
+              optColor = RED;
+              statusText = 'X  [Selected]';
+              statusColor = RED;
+              bgColor = rgb(0.99, 0.94, 0.94); // light red
+            } else if (isThisCorrect && !isThisChosen) {
+              // Correct answer they missed — show checkmark
+              optFont = fontBold;
+              optColor = CHECK_GREEN;
+              statusText = '\u2713  [Correct Answer]';
+              statusColor = CHECK_GREEN;
+              bgColor = rgb(0.94, 0.99, 0.94); // light green
+            }
+            // else: plain option, no highlight
+          } else {
+            // No grading — just highlight the chosen option
+            if (isThisChosen) {
+              optFont = fontBold;
+              statusText = '[Selected]';
+              statusColor = TEXT_SECONDARY;
+            }
+          }
+
+          // Draw background highlight if needed
+          if (bgColor) {
+            const bgHeight = optLines.length * optionLineSpacing + 2;
+            currentPage.drawRectangle({
+              x: MARGIN_LEFT + 10, y: yPos - bgHeight - 1,
+              width: CONTENT_WIDTH - 16, height: bgHeight + 2,
+              color: bgColor,
+            });
+          }
+
+          // Draw option letter prefix (a. b. c. d.)
+          try {
+            currentPage.drawText(`${opt.value}.`, {
+              x: optionLetterX, y: yPos - optionFontSize,
+              size: optionFontSize, font: optFont, color: optColor,
+            });
+          } catch { /* skip */ }
+
+          // Draw option text (wrapped)
+          for (let i = 0; i < optLines.length; i++) {
+            try {
+              currentPage.drawText(optLines[i] || '', {
+                x: optionIndent, y: yPos - optionFontSize,
+                size: optionFontSize, font: optFont, color: optColor,
+              });
+            } catch { /* skip */ }
+
+            // Draw status text on the first line, right-aligned
+            if (i === 0 && statusText) {
+              try {
+                const statusWidth = fontBold.widthOfTextAtSize(statusText, 7);
+                currentPage.drawText(statusText, {
+                  x: indicatorX - statusWidth, y: yPos - optionFontSize,
+                  size: 7, font: fontBold, color: statusColor,
+                });
+              } catch { /* skip */ }
+            }
+            yPos -= optionLineSpacing;
+          }
+          yPos -= 1; // tiny gap between options
+        }
+      } else if (fieldType === 'textarea' || fieldType === 'text') {
+        // Free-text question (like Q67) — show the response
+        const responseText = userAnswer ? sanitizeText(String(fieldValue)) : '--';
+        const respLines = wrapText(responseText, font, optionFontSize, maxOptionWidth);
+        for (const line of respLines) {
+          ensureSpace(optionLineSpacing + 2);
+          try {
+            currentPage.drawText(line || '', {
+              x: optionIndent, y: yPos - optionFontSize,
+              size: optionFontSize, font: fontItalic, color: TEXT_SECONDARY,
+            });
+          } catch { /* skip */ }
+          yPos -= optionLineSpacing;
+        }
+      } else {
+        // Fallback: show just the answer
+        const displayVal = userAnswer || '--';
+        ensureSpace(optionLineSpacing + 2);
+        try {
+          currentPage.drawText(displayVal, {
+            x: optionIndent, y: yPos - optionFontSize,
+            size: optionFontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+        yPos -= optionLineSpacing;
+      }
+
+      // Gap between questions
+      yPos -= 5;
+    }
+
+    // ── Score Summary Box at bottom of last part ──
+    if (isLastPart && hasGrading) {
+      drawScoreSummaryBox(false);
+    }
+  }
+
+  /**
+   * Render CHC Indiana Service Plan weekly schedule as a grid table.
+   * Detects checkbox_grid fields with day-of-week columns (mon,tue,wed,thu,fri,sat,sun)
+   * and renders a compact table matching the original Service Plan document.
+   *
+   * Format: Service Name | Mon | Tue | Wed | Thu | Fri | Sat | Sun
+   * Checked cells show a bullet dot; empty cells are blank.
+   * Category headers (section titles) rendered as colored rows.
+   */
+  async function renderServicePlanGrid(section: any): Promise<void> {
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+    const gridFields = fields.filter((f: any) => (f.type || (f as any).field_type) === 'checkbox_grid');
+    const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    // Table dimensions
+    const tableLeftX = MARGIN_LEFT;
+    const totalWidth = CONTENT_WIDTH;
+    const serviceColW = totalWidth * 0.44;
+    const dayColW = (totalWidth - serviceColW) / 7;
+
+    const headerHeight = 20;
+    const rowHeight = 15;
+    const categoryRowHeight = 16;
+    const fontSize = 7;
+    const headerFontSize = 6.5;
+
+    // Section title as category header
+    const sectionTitle = section.title || section.section_name || '';
+
+    // Draw table header row with day labels
+    function drawTableHeader(): void {
+      ensureSpace(headerHeight + rowHeight * 3 + 20);
+
+      // Header background
+      currentPage.drawRectangle({
+        x: tableLeftX, y: yPos - headerHeight,
+        width: totalWidth, height: headerHeight,
+        color: BRAND_TEAL,
+      });
+
+      // "Services" label
+      const hY = yPos - 8;
+      try {
+        currentPage.drawText('Services', {
+          x: tableLeftX + 4, y: hY - headerFontSize,
+          size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+        });
+      } catch { /* skip */ }
+
+      // Day column headers
+      for (let d = 0; d < 7; d++) {
+        const colX = tableLeftX + serviceColW + d * dayColW;
+        try {
+          const tw = fontBold.widthOfTextAtSize(DAY_LABELS[d], headerFontSize);
+          currentPage.drawText(DAY_LABELS[d], {
+            x: colX + (dayColW - tw) / 2, y: hY - headerFontSize,
+            size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+          });
+        } catch { /* skip */ }
+
+        // Vertical separator
+        currentPage.drawLine({
+          start: { x: colX, y: yPos },
+          end: { x: colX, y: yPos - headerHeight },
+          thickness: 0.3, color: rgb(1, 1, 1),
+        });
+      }
+
+      // Bottom border
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: yPos - headerHeight },
+        end: { x: tableLeftX + totalWidth, y: yPos - headerHeight },
+        thickness: 0.5, color: BRAND_TEAL,
+      });
+
+      yPos -= headerHeight;
+    }
+
+    // Draw category header row
+    function drawCategoryHeader(label: string): void {
+      ensureSpace(categoryRowHeight + rowHeight + 4);
+      currentPage.drawRectangle({
+        x: tableLeftX, y: yPos - categoryRowHeight,
+        width: totalWidth, height: categoryRowHeight,
+        color: rgb(0.93, 0.97, 0.97), // light teal bg
+      });
+      try {
+        currentPage.drawText(sanitizeText(label), {
+          x: tableLeftX + 4, y: yPos - categoryRowHeight + 4,
+          size: fontSize, font: fontBold, color: BRAND_TEAL,
+        });
+      } catch { /* skip */ }
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: yPos - categoryRowHeight },
+        end: { x: tableLeftX + totalWidth, y: yPos - categoryRowHeight },
+        thickness: 0.3, color: rgb(0.85, 0.85, 0.85),
+      });
+      yPos -= categoryRowHeight;
+    }
+
+    // Draw a data row
+    function drawServiceRow(label: string, dayValues: Record<string, boolean>, altRow: boolean): void {
+      ensureSpace(rowHeight + 4);
+
+      // Alternating row background
+      if (altRow) {
+        currentPage.drawRectangle({
+          x: tableLeftX, y: yPos - rowHeight,
+          width: totalWidth, height: rowHeight,
+          color: rgb(0.98, 0.98, 0.98),
+        });
+      }
+
+      // Service name
+      try {
+        currentPage.drawText(sanitizeText(label), {
+          x: tableLeftX + 4, y: yPos - rowHeight + 4,
+          size: fontSize, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+
+      // Day cells
+      for (let d = 0; d < 7; d++) {
+        const colX = tableLeftX + serviceColW + d * dayColW;
+        const isChecked = dayValues[DAYS[d]] === true;
+
+        // Vertical grid line
+        currentPage.drawLine({
+          start: { x: colX, y: yPos },
+          end: { x: colX, y: yPos - rowHeight },
+          thickness: 0.2, color: rgb(0.88, 0.88, 0.88),
+        });
+
+        // Check mark (filled circle)
+        if (isChecked) {
+          const cx = colX + dayColW / 2;
+          const cy = yPos - rowHeight / 2;
+          currentPage.drawCircle({
+            x: cx, y: cy, size: 2.5,
+            color: BRAND_TEAL,
+          });
+        }
+      }
+
+      // Bottom border
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: yPos - rowHeight },
+        end: { x: tableLeftX + totalWidth, y: yPos - rowHeight },
+        thickness: 0.2, color: rgb(0.88, 0.88, 0.88),
+      });
+
+      yPos -= rowHeight;
+    }
+
+    // Render: category header first if section title exists
+    if (sectionTitle && !sectionTitle.toLowerCase().includes('service plan information') && !sectionTitle.toLowerCase().includes('acknowledgment')) {
+      drawTableHeader();
+      drawCategoryHeader(sectionTitle);
+    } else {
+      drawTableHeader();
+    }
+
+    // Render each checkbox_grid field
+    let rowIdx = 0;
+    for (const gridField of gridFields) {
+      const fieldId = gridField.field_id || gridField.id || '';
+      const gridValue = submission_data[fieldId];
+      const rows = gridField.rows || [];
+
+      for (const row of rows) {
+        // Support both formats: { value: "x" } (JSON package) and { row_id: "x" } (after json-to-analyzed transform)
+        const rowKey = row.value || row.row_id || '';
+        const rowLabel = row.label || rowKey;
+
+        // Extract day values from the grid data
+        // Grid data format: { "rowKey__colKey": true } or { "rowKey": { "colKey": true } }
+        const dayValues: Record<string, boolean> = {};
+        for (const day of DAYS) {
+          const flatKey = `${rowKey}__${day}`;
+          const nestedKey = `${fieldId}__${rowKey}__${day}`;
+          if (gridValue && typeof gridValue === 'object') {
+            dayValues[day] = gridValue[flatKey] === true || gridValue[`${rowKey}.${day}`] === true;
+          }
+          // Also check direct submission data keys
+          if (submission_data[nestedKey] === true || submission_data[nestedKey] === 'true') {
+            dayValues[day] = true;
+          }
+        }
+
+        drawServiceRow(rowLabel, dayValues, rowIdx % 2 === 1);
+        rowIdx++;
+      }
+    }
+
+    // Render directions/notes fields below the grid
+    const textFields = fields.filter((f: any) => {
+      const ft = f.type || (f as any).field_type;
+      return ft === 'textarea' || ft === 'text';
+    });
+    for (const tf of textFields) {
+      const tfId = tf.field_id || tf.id || '';
+      const tfValue = submission_data[tfId];
+      if (tfValue) {
+        const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+        ensureSpace(lineSpacing * 2 + 4);
+        try {
+          currentPage.drawText(`${tf.label || 'Notes'}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE - 1, font: fontBold, color: TEXT_SECONDARY,
+          });
+          yPos -= lineSpacing;
+          currentPage.drawText(sanitizeText(String(tfValue)), {
+            x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+            size: BODY_SIZE - 1, font, color: TEXT_PRIMARY,
+          });
+          yPos -= lineSpacing;
+        } catch { /* skip */ }
+      }
+    }
+
+    yPos -= 6;
+  }
+
+  /**
+   * Render CHC Indiana Skills Checklist / Supervision as a compact table.
+   * Three columns: Skills | Assessment Method (D/O) | Evaluation (Met/Not Met)
+   * Field IDs use 'skills_checklist__' prefix with skill key + __method/__evaluation
+   */
+  async function renderChcSkillsChecklistTable(section: any): Promise<void> {
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+
+    // Render Employee Name and Date before the table
+    const empNameField = fields.find((f: any) => (f.field_id || f.id || '').endsWith('__employee_name'));
+    const dateField = fields.find((f: any) => (f.field_id || f.id || '').endsWith('__evaluation_date'));
+    const empNameValue = empNameField ? submission_data[empNameField.field_id || empNameField.id] || '' : '';
+    const dateValue = dateField ? submission_data[dateField.field_id || dateField.id] || '' : '';
+
+    if (empNameValue || dateValue) {
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+      ensureSpace(lineSpacing * 2 + 12);
+      try {
+        if (empNameValue) {
+          currentPage.drawText('Home Health Aide Name:', {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const lw = fontBold.widthOfTextAtSize('Home Health Aide Name: ', BODY_SIZE);
+          currentPage.drawText(sanitizeText(String(empNameValue)), {
+            x: MARGIN_LEFT + 8 + lw + 4, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+          yPos -= lineSpacing + 2;
+        }
+        if (dateValue) {
+          currentPage.drawText('Date:', {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const lw2 = fontBold.widthOfTextAtSize('Date: ', BODY_SIZE);
+          currentPage.drawText(formatDateValue(String(dateValue)), {
+            x: MARGIN_LEFT + 8 + lw2 + 4, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+          yPos -= lineSpacing + 2;
+        }
+      } catch { /* skip */ }
+      yPos -= 6;
+    }
+
+    // Skills in document order — extract from __method fields
+    interface ChcSkillRow {
+      key: string;
+      label: string;
+      methodFieldId: string;
+      evalFieldId: string;
+      isAdlItem: boolean;
+    }
+
+    const adlItems = new Set([
+      'privacy_dignity', 'bed_bath', 'shower', 'shampoo', 'nail_care',
+      'skin_care', 'oral_hygiene', 'toileting', 'feeding',
+    ]);
+
+    const skillRows: (ChcSkillRow | { isHeader: true; label: string })[] = [];
+    const methodFields = fields.filter((f: any) => {
+      const fid = f.field_id || f.id || '';
+      return fid.startsWith('skills_checklist__') && fid.endsWith('__method');
+    });
+
+    let insertedAdlsHeader = false;
+    for (const mf of methodFields) {
+      const fid = mf.field_id || mf.id || '';
+      const key = fid.replace('skills_checklist__', '').replace('__method', '');
+      const label = (mf.label || '').replace(/\s*[–-]\s*(Assessment Method|Competency Assessed)$/i, '');
+      const evalFieldId = fid.replace('__method', '__evaluation');
+
+      if (adlItems.has(key) && !insertedAdlsHeader) {
+        skillRows.push({ isHeader: true, label: 'Provision of appropriate care/ADLs' });
+        insertedAdlsHeader = true;
+      }
+      skillRows.push({ key, label, methodFieldId: fid, evalFieldId, isAdlItem: adlItems.has(key) });
+    }
+
+    // Table dimensions — 3 columns
+    const tableLeftX = MARGIN_LEFT;
+    const totalWidth = CONTENT_WIDTH;
+    const skillColW = totalWidth * 0.52;
+    const methodColW = totalWidth * 0.22;
+    const evalColW = totalWidth * 0.26;
+
+    const headerHeight = 24;
+    const rowHeight = 18;
+    const categoryRowHeight = 16;
+    const fontSize = 7.5;
+    const headerFontSize = 7;
+
+    // Draw table header
+    function drawTableHeader(): void {
+      ensureSpace(headerHeight + rowHeight + 20);
+
+      // Header background
+      currentPage.drawRectangle({
+        x: tableLeftX, y: yPos - headerHeight,
+        width: totalWidth, height: headerHeight,
+        color: BRAND_TEAL,
+      });
+
+      const hY = yPos - 10;
+      const hY2 = yPos - 19;
+
+      try {
+        currentPage.drawText('Skills', {
+          x: tableLeftX + 4, y: hY - 3,
+          size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+        });
+
+        currentPage.drawText('Assessment Method', {
+          x: tableLeftX + skillColW + 4, y: hY,
+          size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+        });
+        currentPage.drawText('(D.O. and/or Oral Q&A)', {
+          x: tableLeftX + skillColW + 4, y: hY2,
+          size: headerFontSize - 1, font, color: rgb(1, 1, 1),
+        });
+
+        currentPage.drawText('Evaluation', {
+          x: tableLeftX + skillColW + methodColW + 4, y: hY,
+          size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+        });
+        currentPage.drawText('(Met / Not Met)', {
+          x: tableLeftX + skillColW + methodColW + 4, y: hY2,
+          size: headerFontSize - 1, font, color: rgb(1, 1, 1),
+        });
+      } catch { /* skip */ }
+
+      // Vertical lines
+      for (const colX of [tableLeftX + skillColW, tableLeftX + skillColW + methodColW]) {
+        currentPage.drawLine({
+          start: { x: colX, y: yPos },
+          end: { x: colX, y: yPos - headerHeight },
+          thickness: 0.5, color: rgb(1, 1, 1),
+        });
+      }
+
+      // Outer border
+      currentPage.drawRectangle({
+        x: tableLeftX, y: yPos - headerHeight,
+        width: totalWidth, height: headerHeight,
+        borderColor: BRAND_TEAL, borderWidth: 0.75,
+        opacity: 0,
+      });
+
+      yPos -= headerHeight;
+    }
+
+    drawTableHeader();
+
+    // Draw each row
+    let rowIndex = 0;
+    for (const row of skillRows) {
+      if ('isHeader' in row && row.isHeader) {
+        // Category header row
+        if (yPos - categoryRowHeight < MARGIN_BOTTOM + 20) {
+          newPage();
+          drawTableHeader();
+        }
+        const catY = yPos - categoryRowHeight;
+        currentPage.drawRectangle({
+          x: tableLeftX, y: catY,
+          width: totalWidth, height: categoryRowHeight,
+          color: BRAND_TEAL_LIGHT,
+        });
+        try {
+          currentPage.drawText(sanitizeText(row.label), {
+            x: tableLeftX + 4, y: catY + categoryRowHeight / 2 - 3,
+            size: fontSize - 0.5, font: fontBold, color: BRAND_TEAL,
+          });
+        } catch { /* skip */ }
+        currentPage.drawLine({
+          start: { x: tableLeftX, y: catY },
+          end: { x: tableLeftX + totalWidth, y: catY },
+          thickness: 0.3, color: BORDER_LIGHT,
+        });
+        yPos -= categoryRowHeight;
+        continue;
+      }
+
+      // Normal skill row
+      const skill = row as ChcSkillRow;
+      if (yPos - rowHeight < MARGIN_BOTTOM + 10) {
+        newPage();
+        drawTableHeader();
+      }
+
+      const rowY = yPos - rowHeight;
+      const isEven = rowIndex % 2 === 0;
+
+      // Alternating background
+      if (isEven) {
+        currentPage.drawRectangle({
+          x: tableLeftX, y: rowY,
+          width: totalWidth, height: rowHeight,
+          color: BG_LIGHT_GRAY,
+        });
+      }
+
+      // Row border
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: rowY },
+        end: { x: tableLeftX + totalWidth, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      // Skill name
+      const textY = rowY + rowHeight / 2 - 3;
+      const indent = skill.isAdlItem ? 12 : 0;
+      if (skill.isAdlItem) {
+        try {
+          // Use bullet + dash as ADL indicator (safe for standard PDF fonts)
+          currentPage.drawText('- ', {
+            x: tableLeftX + 4, y: textY,
+            size: fontSize - 1, font, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip arrow if font doesn't support it */ }
+      }
+      try {
+        currentPage.drawText(sanitizeText(skill.label), {
+          x: tableLeftX + 4 + indent, y: textY,
+          size: fontSize, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+
+      // Assessment Method (Yes/No for CHC IN, D/O for legacy)
+      const methodVal = submission_data[skill.methodFieldId] || '';
+      let colX = tableLeftX + skillColW;
+      if (methodVal) {
+        try {
+          const methodText = methodVal === 'yes' ? 'Yes' : methodVal === 'no' ? 'No' : methodVal === 'D' ? 'D - Direct Observation' : methodVal === 'O' ? 'O - Oral Q&A' : String(methodVal);
+          currentPage.drawText(methodText, {
+            x: colX + 4, y: textY,
+            size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+
+      // Vertical line after skills
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      // Evaluation (Met / Not Met) — use plain ASCII, not Unicode (Helvetica lacks checkmarks)
+      colX = tableLeftX + skillColW + methodColW;
+      const evalVal = submission_data[skill.evalFieldId] || '';
+      if (evalVal) {
+        try {
+          const isMetVal = evalVal === 'met';
+          const evalColor = isMetVal ? CHECK_GREEN : rgb(0.8, 0.15, 0.15);
+          const evalText = isMetVal ? 'Met' : 'Not Met';
+          currentPage.drawText(evalText, {
+            x: colX + 4, y: textY,
+            size: fontSize, font: fontBold, color: evalColor,
+          });
+        } catch { /* skip */ }
+      }
+
+      // Vertical line after method
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      // Outer left + right borders for this row
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: yPos }, end: { x: tableLeftX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      currentPage.drawLine({
+        start: { x: tableLeftX + totalWidth, y: yPos }, end: { x: tableLeftX + totalWidth, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      yPos -= rowHeight;
+      rowIndex++;
+    }
+
+    // Bottom border
+    currentPage.drawLine({
+      start: { x: tableLeftX, y: yPos },
+      end: { x: tableLeftX + totalWidth, y: yPos },
+      thickness: 0.5, color: BORDER_LIGHT,
+    });
+    yPos -= 10;
+
+    // "Other – specify" text field
+    const otherSpecify = submission_data['skills_checklist__other__specify'];
+    if (otherSpecify) {
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+      ensureSpace(lineSpacing + 8);
+      try {
+        currentPage.drawText('Other (specify):', {
+          x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('Other (specify): ', BODY_SIZE);
+        currentPage.drawText(sanitizeText(String(otherSpecify)), {
+          x: MARGIN_LEFT + 8 + lw + 4, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+      yPos -= lineSpacing + 8;
+    }
+
+    // Competency declaration
+    const competentVal = submission_data['skills_checklist__competent'];
+    if (competentVal) {
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+      ensureSpace(lineSpacing + 8);
+      try {
+        currentPage.drawText('Home health aide is competent to carry out care:', {
+          x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('Home health aide is competent to carry out care: ', BODY_SIZE);
+        const compText = competentVal === 'yes' ? 'Yes' : competentVal === 'no' ? 'No' : String(competentVal);
+        const compColor = competentVal === 'yes' ? CHECK_GREEN : rgb(0.8, 0.15, 0.15);
+        currentPage.drawText(compText, {
+          x: MARGIN_LEFT + 8 + lw + 4, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: compColor,
+        });
+      } catch { /* skip */ }
+      yPos -= lineSpacing + 8;
+    }
+
+    // Signatures block — Home Health Aide + Staff
+    const signatureFields = [
+      { sigId: 'skills_checklist__aide_signature', dateId: 'skills_checklist__aide_date', label: 'Home Health Aide Signature' },
+      { sigId: 'skills_checklist__staff_signature', dateId: 'skills_checklist__staff_date', label: 'Staff Signature' },
+    ];
+
+    yPos -= 6;
+    for (const sigDef of signatureFields) {
+      const sigValue = submission_data[sigDef.sigId] || '';
+      const dateValue = submission_data[sigDef.dateId] || '';
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+
+      ensureSpace(55);
+
+      // Label
+      try {
+        currentPage.drawText(sigDef.label + ':', {
+          x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+        });
+      } catch { /* skip */ }
+
+      // Date on the right
+      if (dateValue) {
+        try {
+          const dateLabel = 'Date: ' + formatDateValue(String(dateValue));
+          const dw = font.widthOfTextAtSize(dateLabel, BODY_SIZE);
+          currentPage.drawText(dateLabel, {
+            x: MARGIN_LEFT + CONTENT_WIDTH - dw - 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+
+      yPos -= lineSpacing + 2;
+
+      // Signature image
+      if (sigValue && typeof sigValue === 'string' && sigValue.startsWith('data:image')) {
+        try {
+          const base64Data = sigValue.split(',')[1];
+          const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+          const signatureImage = await pdfDoc.embedPng(imageBytes);
+          const sigWidth = Math.min(180, CONTENT_WIDTH * 0.35);
+          const sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+
+          ensureSpace(sigHeight + 8);
+          currentPage.drawImage(signatureImage, {
+            x: MARGIN_LEFT + 8,
+            y: yPos - sigHeight,
+            width: sigWidth,
+            height: sigHeight,
+          });
+          yPos -= sigHeight + 4;
+        } catch {
+          try {
+            currentPage.drawText('[Signature provided]', {
+              x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font: fontItalic, color: TEXT_MUTED,
+            });
+          } catch { /* skip */ }
+          yPos -= lineSpacing;
+        }
+      } else if (globalSignatureImage && sigDef.sigId === 'skills_checklist__aide_signature') {
+        // Auto-apply caregiver's captured signature
+        try {
+          const sigWidth = Math.min(180, CONTENT_WIDTH * 0.35);
+          const sigHeight = sigWidth * (globalSignatureImage.height / globalSignatureImage.width);
+
+          ensureSpace(sigHeight + 8);
+          currentPage.drawImage(globalSignatureImage, {
+            x: MARGIN_LEFT + 8,
+            y: yPos - sigHeight,
+            width: sigWidth,
+            height: sigHeight,
+          });
+          yPos -= sigHeight + 4;
+        } catch {
+          yPos -= lineSpacing;
+        }
+      } else {
+        // Empty signature line
+        currentPage.drawLine({
+          start: { x: MARGIN_LEFT + 8, y: yPos },
+          end: { x: MARGIN_LEFT + 208, y: yPos },
+          thickness: 0.5, color: BORDER_LIGHT,
+        });
+        yPos -= 8;
+      }
+
+      yPos -= 4;
+    }
+  }
+
+  /**
+   * Render Personal Care Assistant Skills Check List as a proper table.
+   * Matches the original form layout: Skill | Date | Met | Not Met | Re-Test Date | Met | Not Met | Comments
+   * Field IDs use 'skills_checklist__' prefix with skill key + __date/__met/__retest_date/__retest_met/__comments
+   */
+  async function renderSkillsChecklistTable(section: any): Promise<void> {
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+
+    // Render Employee Name before the table
+    const empNameField = fields.find((f: any) => (f.field_id || f.id || '').endsWith('__employee_name'));
+    const empNameValue = empNameField ? submission_data[empNameField.field_id || empNameField.id] || '' : '';
+    if (empNameValue) {
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+      ensureSpace(lineSpacing + 8);
+      try {
+        currentPage.drawText('Employee Name:', {
+          x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('Employee Name: ', BODY_SIZE);
+        currentPage.drawText(sanitizeText(String(empNameValue)), {
+          x: MARGIN_LEFT + 8 + lw + 4, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+      yPos -= lineSpacing + 6;
+    }
+
+    // Ordered skills list with keys and display labels
+    const skills: { key: string; label: string; category?: string }[] = [
+      { key: 'ambulation', label: 'Ambulation: Assist with\nCane, Walker, or Crutches', category: 'Mobility (Assist)' },
+      { key: 'rom', label: 'ROM: Upper and Lower,\nActive and Passive', category: '' },
+      { key: 'transfer', label: 'Transfer: Assist with\nWheelchair or Bed-to-Chair', category: '' },
+      { key: 'positioning', label: 'Positioning:\nIn a Bed or In a Chair', category: '' },
+      { key: 'oral_care', label: 'Oral: Dentures, Natural\nTeeth, or Gum Care', category: 'Personal Care (Assist)' },
+      { key: 'bath_bedside', label: 'Bath at Bedside –\nAssist Client', category: '' },
+      { key: 'bath_shower', label: 'Bath: Shower, Tub,\nor Sponge Bath', category: '' },
+      { key: 'nail_care', label: 'Nail Care (except Diabetic):\nFinger or Toes', category: '' },
+      { key: 'hair_shampoo', label: 'Hair: Shampoo – Bed,\nSink, or Bathtub/Shower', category: '' },
+      { key: 'skin_breakdown', label: 'Prevention of Skin Breakdown:\nPressure Areas / Massage', category: '' },
+      { key: 'toileting', label: 'Toileting: Bathroom, Bedpan,\nUrinal, Commode, Catheter', category: 'Bodily Functions (Assist)' },
+      { key: 'fluid_balance', label: 'Fluid Balance: Intake\nor Output Measurement', category: '' },
+      { key: 'linen_change', label: 'Linen Change', category: 'Environmental Services' },
+      { key: 'universal_precautions', label: 'Universal Precautions:\nas written by Agency', category: '' },
+      { key: 'med_reminders_competent', label: 'Medication Reminders –\nCompetent Client', category: '' },
+      { key: 'med_reminders_incompetent', label: 'Medication Reminders –\nMentally Incompetent Client', category: '' },
+      { key: 'special_equipment', label: 'Use of Special Equipment', category: 'Other Individual Agency\nRequirements' },
+    ];
+
+    // Table dimensions
+    const tableLeftX = MARGIN_LEFT;
+    const totalWidth = CONTENT_WIDTH;
+    const skillColW = totalWidth * 0.24;
+    const dateColW = totalWidth * 0.10;
+    const metColW = totalWidth * 0.06;
+    const notMetColW = totalWidth * 0.06;
+    const retestDateColW = totalWidth * 0.10;
+    const retestMetColW = totalWidth * 0.06;
+    const retestNotMetColW = totalWidth * 0.06;
+    const commentsColW = totalWidth - skillColW - dateColW - metColW - notMetColW - retestDateColW - retestMetColW - retestNotMetColW;
+
+    const headerHeight = 28;
+    const rowHeight = 28; // Taller rows for two-line skill names
+    const fontSize = 7;
+    const headerFontSize = 6.5;
+
+    // Check if entire table fits; if not, we'll handle page breaks per row
+    const estimatedHeight = headerHeight + (skills.length * rowHeight) + 80;
+
+    // Helper to draw the table header
+    function drawTableHeader(): void {
+      ensureSpace(headerHeight + rowHeight + 20);
+
+      // Header background
+      currentPage.drawRectangle({
+        x: tableLeftX, y: yPos - headerHeight,
+        width: totalWidth, height: headerHeight,
+        color: BRAND_TEAL,
+      });
+
+      // Column headers
+      let colX = tableLeftX;
+      const hY = yPos - 12;
+      const hY2 = yPos - 22;
+
+      try {
+        // Skill column
+        currentPage.drawText('Demonstration', { x: colX + 3, y: hY, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        currentPage.drawText('of Skills', { x: colX + 3, y: hY2, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += skillColW;
+
+        // Date
+        currentPage.drawText('Date', { x: colX + 3, y: hY - 5, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += dateColW;
+
+        // Met
+        currentPage.drawText('Met', { x: colX + 3, y: hY - 5, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += metColW;
+
+        // Not Met
+        currentPage.drawText('Not', { x: colX + 2, y: hY, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        currentPage.drawText('Met', { x: colX + 2, y: hY2, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += notMetColW;
+
+        // Re-Test Date
+        currentPage.drawText('Re-Test', { x: colX + 2, y: hY, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        currentPage.drawText('Date', { x: colX + 2, y: hY2, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += retestDateColW;
+
+        // Re-Test Met
+        currentPage.drawText('Met', { x: colX + 3, y: hY - 5, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += retestMetColW;
+
+        // Re-Test Not Met
+        currentPage.drawText('Not', { x: colX + 2, y: hY, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        currentPage.drawText('Met', { x: colX + 2, y: hY2, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+        colX += retestNotMetColW;
+
+        // Comments
+        currentPage.drawText('Comments', { x: colX + 3, y: hY - 5, size: headerFontSize, font: fontBold, color: rgb(1, 1, 1) });
+      } catch { /* skip */ }
+
+      // Vertical lines for header
+      colX = tableLeftX + skillColW;
+      const cols = [dateColW, metColW, notMetColW, retestDateColW, retestMetColW, retestNotMetColW, commentsColW];
+      for (const w of cols) {
+        currentPage.drawLine({
+          start: { x: colX, y: yPos },
+          end: { x: colX, y: yPos - headerHeight },
+          thickness: 0.5, color: rgb(1, 1, 1),
+        });
+        colX += w;
+      }
+
+      // Outer border for header
+      currentPage.drawRectangle({
+        x: tableLeftX, y: yPos - headerHeight,
+        width: totalWidth, height: headerHeight,
+        borderColor: BRAND_TEAL, borderWidth: 0.75,
+        opacity: 0,
+      });
+
+      yPos -= headerHeight;
+    }
+
+    // Draw initial header
+    drawTableHeader();
+
+    // Helper to draw a checkmark or X
+    function drawCheck(x: number, y: number, checked: boolean): void {
+      if (checked) {
+        try {
+          currentPage.drawText('X', {
+            x: x + 4, y: y + 8,
+            size: 9, font: fontBold, color: CHECK_GREEN,
+          });
+        } catch { /* skip */ }
+      }
+    }
+
+    // Draw each skill row
+    for (let i = 0; i < skills.length; i++) {
+      const skill = skills[i];
+      const prefix = `skills_checklist__${skill.key}`;
+
+      // Check page break — if not enough room, new page + re-draw header
+      // Use tighter margin for last 2 rows to avoid orphan rows on a new page
+      const remainingRows = skills.length - i;
+      const breakThreshold = remainingRows <= 2 ? MARGIN_BOTTOM + 5 : MARGIN_BOTTOM + 20;
+      if (yPos - rowHeight < breakThreshold) {
+        newPage();
+        drawTableHeader();
+      }
+
+      const rowY = yPos - rowHeight;
+      const isEvenRow = i % 2 === 0;
+
+      // Row background (alternating)
+      if (isEvenRow) {
+        currentPage.drawRectangle({
+          x: tableLeftX, y: rowY,
+          width: totalWidth, height: rowHeight,
+          color: BG_LIGHT_GRAY,
+        });
+      }
+
+      // Row border
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: rowY },
+        end: { x: tableLeftX + totalWidth, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      // Skill name (with optional category header prefix)
+      let colX = tableLeftX;
+      try {
+        const lines = skill.label.split('\n');
+        const textY1 = lines.length > 1 ? rowY + rowHeight - 9 : rowY + rowHeight / 2 - 2;
+        currentPage.drawText(lines[0], {
+          x: colX + 4, y: textY1,
+          size: fontSize, font: fontBold, color: TEXT_PRIMARY,
+        });
+        if (lines.length > 1) {
+          currentPage.drawText(lines[1], {
+            x: colX + 4, y: textY1 - 9,
+            size: fontSize, font, color: TEXT_SECONDARY,
+          });
+        }
+      } catch { /* skip */ }
+
+      colX += skillColW;
+
+      // Date
+      const dateVal = submission_data[`${prefix}__date`];
+      if (dateVal) {
+        try {
+          currentPage.drawText(formatDateValue(String(dateVal)), {
+            x: colX + 2, y: rowY + rowHeight / 2 - 2,
+            size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      colX += dateColW;
+
+      // Met checkbox
+      const metVal = submission_data[`${prefix}__met`];
+      drawCheck(colX, rowY, metVal === 'yes' || metVal === true || metVal === 'true');
+
+      // Vertical line
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      colX += metColW;
+
+      // Not Met checkbox
+      drawCheck(colX, rowY, metVal === 'no' || metVal === false || metVal === 'false');
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      colX += notMetColW;
+
+      // Re-Test Date
+      const retestDate = submission_data[`${prefix}__retest_date`];
+      if (retestDate) {
+        try {
+          currentPage.drawText(formatDateValue(String(retestDate)), {
+            x: colX + 2, y: rowY + rowHeight / 2 - 2,
+            size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      colX += retestDateColW;
+
+      // Re-Test Met checkbox
+      const retestMet = submission_data[`${prefix}__retest_met`];
+      drawCheck(colX, rowY, retestMet === 'yes' || retestMet === true || retestMet === 'true');
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      colX += retestMetColW;
+
+      // Re-Test Not Met checkbox
+      drawCheck(colX, rowY, retestMet === 'no' || retestMet === false || retestMet === 'false');
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      colX += retestNotMetColW;
+
+      // Comments
+      const comments = submission_data[`${prefix}__comments`];
+      if (comments) {
+        try {
+          const commentText = sanitizeText(String(comments));
+          // Truncate if too long for cell
+          const maxW = commentsColW - 6;
+          let displayText = commentText;
+          while (font.widthOfTextAtSize(displayText, fontSize) > maxW && displayText.length > 5) {
+            displayText = displayText.slice(0, -1);
+          }
+          currentPage.drawText(displayText, {
+            x: colX + 3, y: rowY + rowHeight / 2 - 2,
+            size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      currentPage.drawLine({
+        start: { x: colX, y: yPos }, end: { x: colX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      // Left border
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: yPos }, end: { x: tableLeftX, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      // Right border
+      currentPage.drawLine({
+        start: { x: tableLeftX + totalWidth, y: yPos }, end: { x: tableLeftX + totalWidth, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+      // Date column divider
+      currentPage.drawLine({
+        start: { x: tableLeftX + skillColW, y: yPos }, end: { x: tableLeftX + skillColW, y: rowY },
+        thickness: 0.3, color: BORDER_LIGHT,
+      });
+
+      yPos = rowY;
+    }
+
+    // Bottom border
+    currentPage.drawLine({
+      start: { x: tableLeftX, y: yPos },
+      end: { x: tableLeftX + totalWidth, y: yPos },
+      thickness: 0.75, color: BRAND_TEAL,
+    });
+
+    yPos -= 12;
+
+    // Render signature fields at bottom (evaluator + caregiver signatures)
+    const sigFields = fields.filter((f: any) => {
+      const fid = f.field_id || f.id || '';
+      return fid.includes('signature') || fid.includes('evaluator_date') || fid.includes('caregiver_date');
+    });
+
+    for (const field of sigFields) {
+      const fieldId = field.field_id || field.id || '';
+      const fieldLabel = sanitizeText(field.label) || 'Field';
+      const fieldValue = submission_data[fieldId];
+      const fieldType = field.type || 'text';
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+
+      if (fieldType === 'signature') {
+        ensureSpace(40);
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+
+        // Use field value, or fall back to competency caregiver signature for employee sig fields
+        let sigVal = fieldValue;
+        if ((!sigVal || typeof sigVal !== 'string' || !sigVal.startsWith('data:image')) && fieldId.includes('caregiver')) {
+          sigVal = submission_data['competency_caregiver_signature'];
+        }
+
+        if (sigVal && typeof sigVal === 'string' && sigVal.startsWith('data:image')) {
+          try {
+            const base64Data = sigVal.split(',')[1];
+            const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+            const signatureImage = await pdfDoc.embedPng(imageBytes);
+            const sigWidth = Math.min(200, CONTENT_WIDTH * 0.4);
+            const sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+            ensureSpace(sigHeight + 10);
+            currentPage.drawImage(signatureImage, {
+              x: MARGIN_LEFT + 8, y: yPos - sigHeight,
+              width: sigWidth, height: sigHeight,
+            });
+            yPos -= sigHeight + 4;
+          } catch {
+            drawWrappedTextBlock('[Signature provided]', MARGIN_LEFT + 16, fontItalic, BODY_SIZE, CONTENT_WIDTH - 24, TEXT_MUTED);
+          }
+        } else {
+          currentPage.drawLine({
+            start: { x: MARGIN_LEFT + 8, y: yPos },
+            end: { x: MARGIN_LEFT + 208, y: yPos },
+            thickness: 0.5, color: BORDER_LIGHT,
+          });
+          yPos -= 8;
+        }
+        yPos -= 6;
+      } else if (fieldType === 'date') {
+        ensureSpace(lineSpacing + 4);
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const lw = fontBold.widthOfTextAtSize(`${fieldLabel}: `, BODY_SIZE);
+          const dateDisplay = fieldValue ? formatDateValue(String(fieldValue)) : '--';
+          currentPage.drawText(dateDisplay, {
+            x: MARGIN_LEFT + 8 + lw + 4, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: fieldValue ? TEXT_PRIMARY : TEXT_MUTED,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing + 1;
+      }
+    }
+  }
+
+  /**
+   * Render Competency Evaluation table in landscape orientation.
+   * Matches the reference form: Required Skill | Competency | Method | Date | R.N. Intls
+   * Field IDs use 'ce__' prefix (e.g., ce__handwashing, ce__handwashing_method)
+   * Pre-fills defaults: Competency=S, Method=I,J,O, Date from eval date, R.N. Initials from metadata
+   */
+  async function renderCompetencyEvaluationTable(section: any): Promise<void> {
+    // Switch to landscape page — all content (header info + table + sig) goes here
+    const landscapePageWidth = PAGE_HEIGHT;   // 792
+    const landscapePageHeight = PAGE_WIDTH;   // 612
+    const lmLeft = 36;
+    const lmRight = 36;
+    const lContentW = landscapePageWidth - lmLeft - lmRight; // 720
+
+    currentPage = pdfDoc.addPage([landscapePageWidth, landscapePageHeight]);
+    yPos = landscapePageHeight - 36;
+    pageCount++;
+
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+    const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+
+    // ── Read RN metadata defaults ──
+    const rnInitialsDefault = formDef.metadata?.rn_evaluator_initials || 'K.A';
+    const rnNameDefault = formDef.metadata?.rn_evaluator_name || '';
+    const rnSigDefault = formDef.metadata?.rn_evaluator_signature || '';
+    const rnLicenseDefault = formDef.metadata?.rn_license_number || '';
+
+    // ── Header info: Name, SSN, Level, Evaluation Type ──
+    const empName = submission_data['ce__employee_name'] || '';
+    const empSSN = submission_data['ce__ssn'] || '';
+    const empLevel = submission_data['ce__level'] || '';
+    const evalType = submission_data['ce__evaluation_type'] || 'Initial';
+
+    // Row 1: Name + Level
+    if (empName || empLevel) {
+      try {
+        currentPage.drawText('Name (Please Print):', {
+          x: lmLeft, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('Name (Please Print): ', BODY_SIZE);
+        currentPage.drawText(sanitizeText(String(empName)), {
+          x: lmLeft + lw + 2, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+      if (empLevel) {
+        try {
+          const lvlX = lmLeft + lContentW * 0.5;
+          currentPage.drawText('Level:', {
+            x: lvlX, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const lvlLW = fontBold.widthOfTextAtSize('Level: ', BODY_SIZE);
+          currentPage.drawText(sanitizeText(String(empLevel)), {
+            x: lvlX + lvlLW + 2, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      yPos -= lineSpacing + 1;
+    }
+    // Row 2: SSN + Evaluation Type
+    if (empSSN || evalType) {
+      try {
+        if (empSSN) {
+          currentPage.drawText('Social Security Number:', {
+            x: lmLeft, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const lw = fontBold.widthOfTextAtSize('Social Security Number: ', BODY_SIZE);
+          currentPage.drawText(sanitizeText(String(empSSN)), {
+            x: lmLeft + lw + 2, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        }
+      } catch { /* skip */ }
+      if (evalType) {
+        try {
+          const etX = lmLeft + lContentW * 0.5;
+          currentPage.drawText('Evaluation:', {
+            x: etX, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+          const etLW = fontBold.widthOfTextAtSize('Evaluation: ', BODY_SIZE);
+          currentPage.drawText(sanitizeText(String(evalType)), {
+            x: etX + etLW + 2, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      yPos -= lineSpacing + 1;
+    }
+    yPos -= 6;
+
+    // Skills — matching JSON ce__ field IDs
+    const skills = [
+      { key: 'handwashing', label: 'Handwashing' },
+      { key: 'bath_bed', label: 'Bath: Bed' },
+      { key: 'bath_shower', label: 'Bath: Sponge, Tub or Shower' },
+      { key: 'shampoo', label: 'Shampoo: Bed, Sink or Tub' },
+      { key: 'nail_care', label: 'Nail Care: Fingers, and Toes' },
+      { key: 'skin_care', label: 'Skin Care: Lotion and Massage' },
+      { key: 'oral_hygiene', label: 'Oral Hygiene' },
+      { key: 'toileting', label: 'Toileting and elimination (Bedpan, Urinal, Commode)' },
+      { key: 'transfer_techniques', label: 'Transfer Techniques' },
+      { key: 'positioning', label: 'Positioning' },
+      { key: 'range_of_motion', label: 'Range of Motion' },
+      { key: 'ambulation', label: 'Ambulation: With or Without aide' },
+      { key: 'tpr_bp', label: 'TPR: Read and Record' },
+      { key: 'bp', label: 'BP: Read and Record' },
+      { key: 'communication', label: 'Communication Skills' },
+      { key: 'infection_control', label: 'Follows Infection Control Prox. And Universal Prec.' },
+      { key: 'managed_diets', label: 'Understand elements of managed diets and fluid intake' },
+      { key: 'clean_environment', label: 'Maintenance of clean, safe and healthy environment' },
+      { key: 'patient_needs', label: "Understands patient's physical, emotional, security and developmental needs" },
+      { key: 'body_functioning', label: 'Understand elements of body functioning and changes reportable to supervisor' },
+      { key: 'emergency_procedures', label: 'Understands and recognizes emergency procedures, patient rights and confidentiality' },
+      { key: 'patient_activities', label: 'Maintains records of patient activities performed' },
+    ];
+
+    // 5 columns: Skill, Competency, Method, Date, R.N. Initials
+    const tableLeftX = lmLeft;
+    const totalW = lContentW;
+    const skillW = totalW * 0.38;
+    const compW = totalW * 0.10;
+    const methW = totalW * 0.10;
+    const dateW = totalW * 0.16;
+    const rnW = totalW - skillW - compW - methW - dateW;
+
+    const headerHeight = 22;
+    const rowHeight = 14;
+    const fontSize = 6.5;
+    const headerFontSize = 7;
+
+    // ── Header ──
+    let currentY = yPos - headerHeight;
+    currentPage.drawRectangle({
+      x: tableLeftX, y: currentY,
+      width: totalW, height: headerHeight,
+      color: BRAND_TEAL,
+    });
+
+    const headers = ['REQUIRED SKILL', 'COMPETENCY', 'METHOD', 'DATE', 'R.N.\nINTLS'];
+    const colWidths = [skillW, compW, methW, dateW, rnW];
+    let hx = tableLeftX;
+    for (let i = 0; i < headers.length; i++) {
+      try {
+        const hLines = headers[i].split('\n');
+        if (hLines.length === 1) {
+          currentPage.drawText(hLines[0], {
+            x: hx + 3, y: currentY + 7,
+            size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+          });
+        } else {
+          currentPage.drawText(hLines[0], {
+            x: hx + 3, y: currentY + 12,
+            size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+          });
+          currentPage.drawText(hLines[1], {
+            x: hx + 3, y: currentY + 4,
+            size: headerFontSize, font: fontBold, color: rgb(1, 1, 1),
+          });
+        }
+      } catch { /* skip */ }
+      hx += colWidths[i];
+    }
+
+    yPos -= headerHeight;
+    currentY = yPos;
+
+    // ── Resolve defaults for pre-fill ──
+    const evalDate = submission_data['ce__evaluation_date'] || '';
+    const dateDisplay = evalDate ? formatDateValue(String(evalDate)) : '';
+
+    // ── Rows ──
+    for (let i = 0; i < skills.length; i++) {
+      const { key, label } = skills[i];
+      const isEven = i % 2 === 0;
+      const rowBg = isEven ? rgb(1, 1, 1) : rgb(0.97, 0.97, 0.97);
+
+      currentPage.drawRectangle({
+        x: tableLeftX, y: currentY - rowHeight,
+        width: totalW, height: rowHeight,
+        color: rowBg,
+      });
+
+      // Field IDs
+      const compFieldId = `ce__${key}`;
+      const methFieldId = `ce__${key}_method`;
+
+      const compField = fields.find((f: any) => (f.field_id || f.id) === compFieldId);
+      const methField = fields.find((f: any) => (f.field_id || f.id) === methFieldId);
+
+      // Use submitted values or defaults
+      const compVal = submission_data[compFieldId] || 'S';
+      const methVal = submission_data[methFieldId] || '';
+
+      const displayLabel = compField?.label?.replace(/\s*-\s*Competency\s*$/i, '') || label;
+
+      let cx = tableLeftX + 3;
+      const textY = currentY - fontSize - 3;
+
+      // Skill label
+      const truncLabel = displayLabel.length > 70 ? displayLabel.substring(0, 68) + '..' : displayLabel;
+      try {
+        currentPage.drawText(sanitizeText(truncLabel), {
+          x: cx, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+      cx += skillW;
+
+      // Competency — default "S"
+      const compText = compVal ? (getOptionLabel(compField, String(compVal)) || String(compVal)) : 'S';
+      {
+        const tw = font.widthOfTextAtSize(compText, fontSize);
+        try {
+          currentPage.drawText(compText, {
+            x: cx + (compW - tw) / 2, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      cx += compW;
+
+      // Method — default "I, J, O"
+      const methText = methVal ? (getOptionLabel(methField, String(methVal)) || String(methVal)) : 'I, J, O';
+      {
+        const tw = font.widthOfTextAtSize(methText, fontSize);
+        try {
+          currentPage.drawText(methText, {
+            x: cx + (methW - tw) / 2, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      cx += methW;
+
+      // Date — auto-filled from evaluation date
+      if (dateDisplay) {
+        const tw = font.widthOfTextAtSize(dateDisplay, fontSize);
+        try {
+          currentPage.drawText(dateDisplay, {
+            x: cx + (dateW - tw) / 2, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+      cx += dateW;
+
+      // R.N. Initials — from metadata or submission
+      const rnInitials = submission_data['ce__evaluator_name_print']
+        ? String(submission_data['ce__evaluator_name_print']).split(/\s+/).map(w => w.charAt(0).toUpperCase()).join('.')
+        : rnInitialsDefault;
+      {
+        const tw = font.widthOfTextAtSize(rnInitials, fontSize);
+        try {
+          currentPage.drawText(rnInitials, {
+            x: cx + (rnW - tw) / 2, y: textY, size: fontSize, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      }
+
+      // Grid lines
+      currentPage.drawLine({
+        start: { x: tableLeftX, y: currentY },
+        end: { x: tableLeftX + totalW, y: currentY },
+        thickness: 0.5, color: BORDER_LIGHT,
+      });
+      let vlx = tableLeftX + skillW;
+      for (const cw of [compW, methW, dateW, rnW]) {
+        currentPage.drawLine({
+          start: { x: vlx, y: currentY },
+          end: { x: vlx, y: currentY - rowHeight },
+          thickness: 0.5, color: BORDER_LIGHT,
+        });
+        vlx += cw;
+      }
+
+      currentY -= rowHeight;
+    }
+
+    // Final table border
+    currentPage.drawLine({
+      start: { x: tableLeftX, y: currentY },
+      end: { x: tableLeftX + totalW, y: currentY },
+      thickness: 0.5, color: BORDER_LIGHT,
+    });
+    currentPage.drawRectangle({
+      x: tableLeftX, y: currentY,
+      width: totalW, height: yPos - currentY,
+      borderColor: BORDER_LIGHT, borderWidth: 0.5,
+      opacity: 0,
+    });
+
+    yPos = currentY - 10;
+
+    // ── Footer: Signature, R.N. Name, License #, Date ──
+    const sigVal = submission_data['ce__evaluator_signature'] || rnSigDefault;
+    const rnNameVal = submission_data['ce__evaluator_name_print'] || rnNameDefault;
+    const rnLicenseVal = submission_data['ce__rn_license_number'] || rnLicenseDefault;
+    const evalDateVal = evalDate;
+
+    // Signature
+    try {
+      currentPage.drawText('R.N. Evaluation Signature:', {
+        x: lmLeft, y: yPos - BODY_SIZE,
+        size: BODY_SIZE - 1, font: fontBold, color: TEXT_SECONDARY,
+      });
+    } catch { /* skip */ }
+    yPos -= lineSpacing + 2;
+
+    if (sigVal && typeof sigVal === 'string' && sigVal.startsWith('data:image')) {
+      try {
+        const base64Data = sigVal.split(',')[1];
+        const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+        const signatureImage = await pdfDoc.embedPng(imageBytes);
+        const sigWidth = Math.min(150, lContentW * 0.25);
+        const sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+        currentPage.drawImage(signatureImage, {
+          x: lmLeft, y: yPos - sigHeight,
+          width: sigWidth, height: sigHeight,
+        });
+        yPos -= sigHeight + 2;
+      } catch {
+        yPos -= 12;
+      }
+    } else {
+      currentPage.drawLine({
+        start: { x: lmLeft, y: yPos },
+        end: { x: lmLeft + 180, y: yPos },
+        thickness: 0.5, color: BORDER_LIGHT,
+      });
+      yPos -= 6;
+    }
+
+    // Footer line: R.N. Name | License # | Date
+    const ftY = yPos - BODY_SIZE;
+    const ftGap = lContentW / 3;
+    if (rnNameVal) {
+      try {
+        currentPage.drawText('R.N. Evaluation Name Print:', {
+          x: lmLeft, y: ftY,
+          size: 7, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('R.N. Evaluation Name Print: ', 7);
+        currentPage.drawText(sanitizeText(String(rnNameVal)), {
+          x: lmLeft + lw, y: ftY,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+    }
+    if (rnLicenseVal) {
+      try {
+        currentPage.drawText('R.N. License Number:', {
+          x: lmLeft + ftGap, y: ftY,
+          size: 7, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('R.N. License Number: ', 7);
+        currentPage.drawText(sanitizeText(String(rnLicenseVal)), {
+          x: lmLeft + ftGap + lw, y: ftY,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+    }
+    if (evalDateVal) {
+      try {
+        currentPage.drawText('Date:', {
+          x: lmLeft + ftGap * 2, y: ftY,
+          size: 7, font: fontBold, color: TEXT_SECONDARY,
+        });
+        const lw = fontBold.widthOfTextAtSize('Date: ', 7);
+        currentPage.drawText(formatDateValue(String(evalDateVal)), {
+          x: lmLeft + ftGap * 2 + lw, y: ftY,
+          size: BODY_SIZE, font, color: TEXT_PRIMARY,
+        });
+      } catch { /* skip */ }
+    }
+
+    yPos = ftY - BODY_SIZE * 2 - 6;
+  }
+
+  // ====== RENDER: SECTIONS ======
+  let sectionIndex = 0;
+  for (const section of sections) {
+    if (!section) continue;
+    // NOTE: We no longer skip hidden_from_applicant sections — office-only
+    // forms (Health Assessment, TB Questionnaire, Annual Employee Checklist,
+    // Supervisory Visit Report, Competency Evaluation, etc.) should appear
+    // in the generated PDF so office staff can review them.
+
+    const sectionTitle = sanitizeText(section.title) || 'Section';
+    const sectionGroup = section.section_group_label || '';
+
+    // ── Page break between sub-forms/sections ──
+    // Smart page breaks: start a new page when there's substantial content
+    // or when the section group changes. Short sections (just a few fields,
+    // short content) can share a page to reduce wasted white space.
+    if (sectionIndex > 0) {
+      // Explicit page break if section has start_new_page flag
+      if (section.start_new_page) {
+        newPage();
+      } else {
+      const hasSubstantialContent = section.content && typeof section.content === 'string' && section.content.replace(/<[^>]*>/g, '').length > 300;
+      const groupChanged = sectionGroup && sectionGroup !== lastSectionGroup;
+      const estimatedHeight = estimateSectionHeight(section);
+      const remainingSpace = yPos - MARGIN_BOTTOM;
+      const sectionFitsOnPage = estimatedHeight < remainingSpace;
+      const isShortSection = estimatedHeight < 180;
+
+      if (groupChanged) {
+        // Group changes always start a new page
+        newPage();
+      } else if (hasSubstantialContent && !sectionFitsOnPage) {
+        // Substantial content that won't fit — new page
+        newPage();
+      } else if (!isShortSection && remainingSpace < 200) {
+        // Medium/long section with little room left — new page
+        newPage();
+      } else if (sections.length >= 8 && !isShortSection) {
+        // Package-style form with non-short sections — new page
+        newPage();
+      } else {
+        // Short sections or enough room — just add spacing, same page
+        ensureSpace(60);
+        yPos -= 16;
+      }
+      } // end else (no start_new_page)
+    }
+    sectionIndex++;
+
+    // ── Early check: CE goes straight to landscape (skip all portrait rendering) ──
+    const sectionId = section.section_id || '';
+    const titleLower = sectionTitle.toLowerCase();
+
+    if (sectionId.includes('competency_evaluation') || titleLower.includes('competency evaluation')) {
+      // Skip portrait heading, content — render everything on the landscape page
+      await renderCompetencyEvaluationTable(section);
+      continue;
+    }
+
+    // ── Section Group Banner ──
+    if (sectionGroup && sectionGroup !== lastSectionGroup) {
+      lastSectionGroup = sectionGroup;
+      ensureSpace(26);
+      yPos -= 6;
+
+      currentPage.drawRectangle({
+        x: MARGIN_LEFT, y: yPos - 18,
+        width: CONTENT_WIDTH, height: 18,
+        color: BRAND_TEAL,
+      });
+      try {
+        currentPage.drawText(sectionGroup.toUpperCase(), {
+          x: MARGIN_LEFT + 8, y: yPos - 13,
+          size: SECTION_GROUP_SIZE, font: fontBold, color: rgb(1, 1, 1),
+        });
+      } catch { /* skip */ }
+      yPos -= 26;
+    }
+
+    // ── Section Heading with left accent bar ──
+    ensureSpace(28);
+    yPos -= 4;
+
+    currentPage.drawRectangle({
+      x: MARGIN_LEFT, y: yPos - 16,
+      width: CONTENT_WIDTH, height: 16,
+      color: BG_LIGHT_GRAY,
+    });
+    currentPage.drawRectangle({
+      x: MARGIN_LEFT, y: yPos - 16,
+      width: 3, height: 16,
+      color: BRAND_TEAL,
+    });
+
+    try {
+      currentPage.drawText(sectionTitle, {
+        x: MARGIN_LEFT + 10, y: yPos - 12,
+        size: HEADING_SIZE, font: fontBold, color: BRAND_TEAL,
+      });
+    } catch { /* skip */ }
+    yPos -= 22;
+
+    // ── Section content (rendered HTML with proper formatting) ──
+    if (section.content && typeof section.content === 'string') {
+      // Replace {{template_variable}} placeholders with actual submission data
+      let processedContent = replaceTemplateVariables(section.content, submission_data, allFields);
+      yPos -= 2;
+      yPos = renderHtmlContent(
+        processedContent,
+        MARGIN_LEFT + 6,
+        yPos,
+        CONTENT_WIDTH - 12,
+        { font, fontBold, fontItalic }, // Backward-compatible format
+        { bodySize: BODY_SIZE, headingSize: HEADING_SIZE, subheadingSize: 10.5 },
+        ensureSpace,
+        () => { newPage(); },
+        () => currentPage,
+        (y: number) => { yPos = y; }
+      );
+      yPos -= 6;
+    }
+
+    // SVR renders after content (content has competency/method keys which are useful)
+    if (sectionId.includes('supervisory_visit') || titleLower.includes('supervisory visit')) {
+      await renderSupervisoryVisitTable(section);
+      continue; // Skip normal field rendering
+    }
+
+    // Competency Test questions — custom renderer with text wrapping and grading indicators
+    // Note: section_id is a random UUID from import (sec_xxxxx), so we also match by title.
+    // Title pattern: "Competency Test – Part X of 4" — but NOT the auditor sign-off section.
+    const isCompetencyTest = sectionId.includes('competency_test_part')
+      || (sectionId.includes('competency_test') && !sectionId.includes('auditor'))
+      || (titleLower.includes('competency test') && !titleLower.includes('auditor'));
+    if (isCompetencyTest) {
+      // Determine if this is the last competency test part by checking remaining sections
+      const remainingSections = sections.slice(sectionIndex);
+      const isLastPart = !remainingSections.some((s: any) => {
+        const sid = s.section_id || '';
+        const stitle = (s.title || '').toLowerCase();
+        return (sid.includes('competency_test_part') || (stitle.includes('competency test') && !stitle.includes('auditor')))
+          && (sid !== sectionId);
+      });
+      // Determine if this is the first competency test part
+      const priorSections = sections.slice(0, sectionIndex - 1);
+      const isFirstPart = !priorSections.some((s: any) => {
+        const stitle = (s.title || '').toLowerCase();
+        return stitle.includes('competency test') && !stitle.includes('auditor');
+      });
+      await renderCompetencyTestQuestions(section, isFirstPart, isLastPart);
+      continue; // Skip normal field rendering
+    }
+
+    // Service Plan weekly grid — detected by checkbox_grid fields with day-of-week columns
+    // Note: section_id is a random UUID from import (sec_xxxxx), so we also match by title
+    // and by field-pattern (any checkbox_grid with day-of-week columns).
+    {
+      const spFields = Array.isArray(section.fields) ? section.fields : [];
+      const gridFields = spFields.filter((f: any) => (f.type || (f as any).field_type) === 'checkbox_grid');
+      const hasDayOfWeekGrid = gridFields.some((f: any) => {
+        const cols = f.columns || [];
+        const colVals = cols.map((c: any) => c.value || c);
+        return colVals.includes('mon') && colVals.includes('tue') && colVals.includes('wed');
+      });
+      const isServicePlanByTitle = titleLower.includes('personal care') || titleLower.includes('homemaking')
+        || titleLower.includes('companion service') || titleLower.includes('other service');
+      const isServicePlanById = sectionId.includes('service_plan_personal_care') || sectionId.includes('service_plan_homemaking')
+        || sectionId.includes('service_plan_companion') || sectionId.includes('service_plan_other');
+      if ((isServicePlanById || isServicePlanByTitle || hasDayOfWeekGrid) && gridFields.length > 0) {
+        await renderServicePlanGrid(section);
+        continue; // Skip normal field rendering
+      }
+    }
+
+    // Skills Check List renders as a proper table (matching original form layout)
+    // Detection: match by section ID, title, OR field patterns (data-driven fallback)
+    const sectionFields = Array.isArray(section.fields) ? section.fields : [];
+    const hasMethodFields = sectionFields.some((f: any) => (f.field_id || f.id || '').endsWith('__method'));
+    const hasSkillsChecklistFields = sectionFields.some((f: any) => {
+      const fid = f.field_id || f.id || '';
+      return fid.startsWith('skills_checklist__') && (fid.endsWith('__method') || fid.endsWith('__evaluation'));
+    });
+    const isSkillsChecklist = sectionId.includes('skills_checklist')
+      || titleLower.includes('skills check list')
+      || titleLower.includes('skills checklist')
+      || hasSkillsChecklistFields;
+
+    if (isSkillsChecklist && (hasMethodFields || hasSkillsChecklistFields)) {
+      // CHC Indiana version uses __method/__evaluation fields
+      if (hasMethodFields) {
+        await renderChcSkillsChecklistTable(section);
+      } else {
+        await renderSkillsChecklistTable(section);
+      }
+      continue; // Skip normal field rendering
+    } else if (isSkillsChecklist) {
+      // XTC version uses __date/__met/__retest fields
+      await renderSkillsChecklistTable(section);
+      continue;
+    }
+
+    // ── Two-column grid layout for Health Assessment and TB Questionnaire ──
+    // Matches the office portal's visual layout: label in small gray uppercase, value below
+    const isTwoColumnSection = sectionId.includes('health_assessment') || titleLower.includes('health assessment')
+      || sectionId.includes('tb_questionnaire') || titleLower.includes('tuberculosis');
+
+    if (isTwoColumnSection) {
+      const gridFields = Array.isArray(section.fields) ? section.fields : [];
+      const COL_WIDTH = (CONTENT_WIDTH - 16) / 2; // Two columns with gap
+      const COL_GAP = 16;
+      const LABEL_SIZE = 7;
+      const VALUE_SIZE = BODY_SIZE;
+      const ROW_HEIGHT_MIN = 36;
+      const NOT_PROVIDED_COLOR = rgb(0.6, 0.6, 0.6);
+
+      // Collect visible fields (apply skip logic)
+      const visibleFields: any[] = [];
+      for (const field of gridFields) {
+        if (!field) continue;
+        const fieldId = field.field_id || field.id || '';
+        if (headerFieldIds.has(fieldId)) continue;
+
+        // show_if check
+        if (field.show_if) {
+          const depValue = submission_data[field.show_if.field];
+          const expected = field.show_if.equals;
+          let visible = false;
+          if (expected === true) visible = depValue === true || depValue === 'true';
+          else if (expected === false) visible = depValue === false || depValue === 'false';
+          else visible = depValue === expected;
+          if (!visible) continue;
+        }
+
+        // hidden check (except signatures)
+        const fieldType = field.type || 'text';
+        if (field.hidden && fieldType !== 'signature') continue;
+
+        // empty skip check (respect always_render)
+        const fieldValue = submission_data[fieldId];
+        const isEmpty = fieldValue === undefined || fieldValue === null || fieldValue === '' ||
+          (typeof fieldValue === 'boolean' && fieldValue === false && fieldType === 'checkbox');
+        if (isEmpty && !field.required && !field.always_render && fieldType !== 'checkbox' && fieldType !== 'signature') continue;
+
+        visibleFields.push(field);
+      }
+
+      // Render fields in two-column grid (signatures get full width)
+      let fieldIdx = 0;
+      while (fieldIdx < visibleFields.length) {
+        const field = visibleFields[fieldIdx];
+        const fieldId = field.field_id || field.id || '';
+        const fieldLabel = sanitizeText(field.label) || 'Field';
+        const fieldValue = submission_data[fieldId];
+        const fieldType = field.type || 'text';
+
+        // Signatures render full-width
+        if (fieldType === 'signature') {
+          ensureSpace(50);
+          try {
+            currentPage.drawText(fieldLabel.toUpperCase(), {
+              x: MARGIN_LEFT + 8, y: yPos - LABEL_SIZE,
+              size: LABEL_SIZE, font: fontBold, color: TEXT_SECONDARY,
+            });
+          } catch { /* skip */ }
+          yPos -= LABEL_SIZE + 4;
+
+          if (fieldValue && typeof fieldValue === 'string' && fieldValue.startsWith('data:image')) {
+            try {
+              const base64Data = fieldValue.split(',')[1];
+              const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+              const signatureImage = await pdfDoc.embedPng(imageBytes);
+              const sigWidth = Math.min(160, CONTENT_WIDTH * 0.3);
+              const sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+              currentPage.drawImage(signatureImage, {
+                x: MARGIN_LEFT + 8, y: yPos - sigHeight,
+                width: sigWidth, height: sigHeight,
+              });
+              yPos -= sigHeight + 4;
+            } catch {
+              yPos -= 20;
+            }
+          } else {
+            try {
+              currentPage.drawText('Not provided', {
+                x: MARGIN_LEFT + 8, y: yPos - VALUE_SIZE,
+                size: VALUE_SIZE, font, color: NOT_PROVIDED_COLOR,
+              });
+            } catch { /* skip */ }
+            yPos -= VALUE_SIZE + 4;
+          }
+          yPos -= 8;
+          fieldIdx++;
+          continue;
+        }
+
+        // For non-signature fields, render two per row
+        const field2 = (fieldIdx + 1 < visibleFields.length && visibleFields[fieldIdx + 1].type !== 'signature')
+          ? visibleFields[fieldIdx + 1]
+          : null;
+
+        // Calculate row height — wrap long labels
+        const maxLabelChars = Math.floor(COL_WIDTH / (LABEL_SIZE * 0.52));
+        const label1Lines = Math.ceil(fieldLabel.length / maxLabelChars);
+        const label2Text = field2 ? (sanitizeText(field2.label) || 'Field') : '';
+        const label2Lines = field2 ? Math.ceil(label2Text.length / maxLabelChars) : 1;
+        const maxLabelLines = Math.max(label1Lines, label2Lines);
+        const labelBlockHeight = maxLabelLines * (LABEL_SIZE + 2);
+        const rowHeight = Math.max(ROW_HEIGHT_MIN, labelBlockHeight + VALUE_SIZE + 12);
+
+        ensureSpace(rowHeight + 4);
+
+        // ── Column 1 ──
+        const col1X = MARGIN_LEFT + 8;
+        let labelY = yPos - LABEL_SIZE;
+
+        // Draw label (with wrapping)
+        try {
+          const labelChunks: string[] = [];
+          const upperLabel = fieldLabel.toUpperCase();
+          for (let i = 0; i < upperLabel.length; i += maxLabelChars) {
+            labelChunks.push(upperLabel.substring(i, i + maxLabelChars));
+          }
+          for (let li = 0; li < labelChunks.length; li++) {
+            currentPage.drawText(labelChunks[li], {
+              x: col1X, y: labelY - (li * (LABEL_SIZE + 2)),
+              size: LABEL_SIZE, font: fontBold, color: TEXT_SECONDARY,
+            });
+          }
+          // Required asterisk
+          if (field.required) {
+            const lastChunkWidth = fontBold.widthOfTextAtSize(labelChunks[labelChunks.length - 1], LABEL_SIZE);
+            currentPage.drawText('*', {
+              x: col1X + lastChunkWidth + 2, y: labelY - ((labelChunks.length - 1) * (LABEL_SIZE + 2)),
+              size: LABEL_SIZE, font: fontBold, color: rgb(0.9, 0.2, 0.2),
+            });
+          }
+        } catch { /* skip */ }
+
+        // Draw value
+        const valueY = yPos - labelBlockHeight - 4 - VALUE_SIZE;
+        const displayValue1 = fieldValue !== undefined && fieldValue !== null && fieldValue !== ''
+          ? sanitizeText(String(fieldValue))
+          : 'Not provided';
+        const isNotProvided1 = displayValue1 === 'Not provided';
+        try {
+          currentPage.drawText(displayValue1, {
+            x: col1X, y: valueY,
+            size: VALUE_SIZE, font: isNotProvided1 ? font : fontBold, color: isNotProvided1 ? NOT_PROVIDED_COLOR : TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+
+        // ── Column 2 ──
+        if (field2) {
+          const field2Id = field2.field_id || field2.id || '';
+          const field2Value = submission_data[field2Id];
+          const col2X = MARGIN_LEFT + 8 + COL_WIDTH + COL_GAP;
+
+          // Draw label (with wrapping)
+          try {
+            const labelChunks2: string[] = [];
+            const upperLabel2 = label2Text.toUpperCase();
+            for (let i = 0; i < upperLabel2.length; i += maxLabelChars) {
+              labelChunks2.push(upperLabel2.substring(i, i + maxLabelChars));
+            }
+            for (let li = 0; li < labelChunks2.length; li++) {
+              currentPage.drawText(labelChunks2[li], {
+                x: col2X, y: labelY - (li * (LABEL_SIZE + 2)),
+                size: LABEL_SIZE, font: fontBold, color: TEXT_SECONDARY,
+              });
+            }
+            if (field2.required) {
+              const lastChunkWidth = fontBold.widthOfTextAtSize(labelChunks2[labelChunks2.length - 1], LABEL_SIZE);
+              currentPage.drawText('*', {
+                x: col2X + lastChunkWidth + 2, y: labelY - ((labelChunks2.length - 1) * (LABEL_SIZE + 2)),
+                size: LABEL_SIZE, font: fontBold, color: rgb(0.9, 0.2, 0.2),
+              });
+            }
+          } catch { /* skip */ }
+
+          // Draw value
+          const displayValue2 = field2Value !== undefined && field2Value !== null && field2Value !== ''
+            ? sanitizeText(String(field2Value))
+            : 'Not provided';
+          const isNotProvided2 = displayValue2 === 'Not provided';
+          try {
+            currentPage.drawText(displayValue2, {
+              x: col2X, y: valueY,
+              size: VALUE_SIZE, font: isNotProvided2 ? font : fontBold, color: isNotProvided2 ? NOT_PROVIDED_COLOR : TEXT_PRIMARY,
+            });
+          } catch { /* skip */ }
+
+          fieldIdx += 2; // consumed two fields
+        } else {
+          fieldIdx += 1; // only one field this row
+        }
+
+        yPos = valueY - 12; // move to next row
+      }
+
+      continue; // Skip normal field rendering for this section
+    }
+
+    // ── Fields ──
+    const fields = Array.isArray(section.fields) ? section.fields : [];
+
+    for (const field of fields) {
+      if (!field) continue;
+
+      const fieldId = field.field_id || field.id || '';
+      const fieldLabel = sanitizeText(field.label) || 'Field';
+      const fieldValue = submission_data[fieldId];
+      const fieldType = field.type || 'text';
+
+      // Skip fields already shown in header info box
+      if (headerFieldIds.has(fieldId)) continue;
+
+      // Skip fields hidden by show_if conditional
+      if (field.show_if) {
+        const depField = field.show_if.field;
+        const depValue = submission_data[depField];
+        const expectedValue = field.show_if.equals;
+        let visible = false;
+        if (expectedValue === true) visible = depValue === true || depValue === 'true';
+        else if (expectedValue === false) visible = depValue === false || depValue === 'false';
+        else visible = depValue === expectedValue;
+        if (!visible) continue;
+      }
+
+      // Skip hidden fields (but never skip signature fields — they need
+      // to render in the PDF even when hidden from the applicant UI)
+      if (field.hidden && fieldType !== 'signature') continue;
+
+      // Skip empty non-required fields (reduces clutter)
+      // Fields with always_render: true are never skipped (shows '--' when empty, like required fields)
+      const isEmpty = fieldValue === undefined || fieldValue === null || fieldValue === '' ||
+        (typeof fieldValue === 'boolean' && fieldValue === false && fieldType === 'checkbox');
+      if (isEmpty && !field.required && !field.always_render && fieldType !== 'checkbox' && fieldType !== 'signature') continue;
+
+      const lineSpacing = BODY_SIZE * LINE_HEIGHT;
+
+      // ── Signature fields ──
+      if (fieldType === 'signature') {
+        ensureSpace(40);
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+
+        if (fieldValue && typeof fieldValue === 'string' && fieldValue.startsWith('data:image')) {
+          try {
+            const base64Data = fieldValue.split(',')[1];
+            const imageBytes = Uint8Array.from(Buffer.from(base64Data, 'base64'));
+            const signatureImage = await pdfDoc.embedPng(imageBytes);
+            let sigWidth = Math.min(200, CONTENT_WIDTH * 0.4);
+            let sigHeight = sigWidth * (signatureImage.height / signatureImage.width);
+            // Cap signature height — tighter for non-client (agency/HR) signatures
+            const isClientSig = fieldLabel.toLowerCase().includes('client');
+            const maxSigH = isClientSig ? 80 : 50;
+            if (sigHeight > maxSigH) {
+              sigWidth = sigWidth * (maxSigH / sigHeight);
+              sigHeight = maxSigH;
+            }
+
+            ensureSpace(sigHeight + 10);
+            currentPage.drawImage(signatureImage, {
+              x: MARGIN_LEFT + 8,
+              y: yPos - sigHeight,
+              width: sigWidth,
+              height: sigHeight,
+            });
+            yPos -= sigHeight + 4;
+          } catch {
+            drawWrappedTextBlock('[Signature provided]', MARGIN_LEFT + 16, fontItalic, BODY_SIZE, CONTENT_WIDTH - 24, TEXT_MUTED);
+          }
+        } else if (globalSignatureImage && shouldApplySignature(sectionTitle)
+                   && ((field as any).signer_role || 'applicant') === 'applicant') {
+          // Auto-apply the global (applicant) signature only to applicant fields.
+          // Staff signature fields (hr_admin, rn_evaluator) are left blank.
+          try {
+            let sigWidth = Math.min(200, CONTENT_WIDTH * 0.4);
+            let sigHeight = sigWidth * (globalSignatureImage.height / globalSignatureImage.width);
+            // Cap signature height — tighter for non-client (agency/HR) signatures
+            const isClientSig = fieldLabel.toLowerCase().includes('client');
+            const maxSigH = isClientSig ? 80 : 50;
+            if (sigHeight > maxSigH) {
+              sigWidth = sigWidth * (maxSigH / sigHeight);
+              sigHeight = maxSigH;
+            }
+
+            ensureSpace(sigHeight + 10);
+            currentPage.drawImage(globalSignatureImage, {
+              x: MARGIN_LEFT + 8,
+              y: yPos - sigHeight,
+              width: sigWidth,
+              height: sigHeight,
+            });
+            yPos -= sigHeight + 4;
+          } catch {
+            drawWrappedTextBlock('[Signature provided]', MARGIN_LEFT + 16, fontItalic, BODY_SIZE, CONTENT_WIDTH - 24, TEXT_MUTED);
+          }
+        } else {
+          currentPage.drawLine({
+            start: { x: MARGIN_LEFT + 8, y: yPos },
+            end: { x: MARGIN_LEFT + 208, y: yPos },
+            thickness: 0.5,
+            color: BORDER_LIGHT,
+          });
+          yPos -= 8;
+        }
+        yPos -= 6;
+        continue;
+      }
+
+      // ── Checkbox fields (render with checkbox box) ──
+      if (fieldType === 'checkbox') {
+        const isChecked = fieldValue === true || fieldValue === 'true';
+        ensureSpace(lineSpacing + 4);
+
+        const boxX = MARGIN_LEFT + 8;
+        const boxSize = 9;
+        const boxY = yPos - BODY_SIZE - 1;
+
+        currentPage.drawRectangle({
+          x: boxX, y: boxY,
+          width: boxSize, height: boxSize,
+          borderColor: isChecked ? CHECK_GREEN : BORDER_LIGHT,
+          borderWidth: 0.75,
+          color: isChecked ? rgb(0.93, 0.98, 0.93) : rgb(1, 1, 1),
+        });
+
+        if (isChecked) {
+          try {
+            currentPage.drawText('X', {
+              x: boxX + 1.5, y: boxY + 1.5,
+              size: 7, font: fontBold, color: CHECK_GREEN,
+            });
+          } catch { /* skip */ }
+        }
+
+        try {
+          currentPage.drawText(fieldLabel, {
+            x: boxX + boxSize + 6, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+
+        yPos -= lineSpacing + 1;
+        continue;
+      }
+
+      // ── Radio fields (show readable label) ──
+      if (fieldType === 'radio' || fieldType === 'select') {
+        ensureSpace(lineSpacing + 4);
+
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+
+        if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
+          const displayLabel = getOptionLabel(field, String(fieldValue));
+          const labelW = fontBold.widthOfTextAtSize(`${fieldLabel}: `, BODY_SIZE);
+          const valX = MARGIN_LEFT + 8 + labelW + 4;
+          const availW = CONTENT_WIDTH - labelW - 20;
+
+          if (availW > 80) {
+            try {
+              currentPage.drawText(sanitizeText(displayLabel), {
+                x: valX, y: yPos - BODY_SIZE,
+                size: BODY_SIZE, font, color: TEXT_PRIMARY,
+              });
+            } catch { /* skip */ }
+          } else {
+            yPos -= lineSpacing;
+            try {
+              currentPage.drawText(sanitizeText(displayLabel), {
+                x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+                size: BODY_SIZE, font, color: TEXT_PRIMARY,
+              });
+            } catch { /* skip */ }
+          }
+        } else if (field.required) {
+          const labelW = fontBold.widthOfTextAtSize(`${fieldLabel}: `, BODY_SIZE);
+          try {
+            currentPage.drawText('--', {
+              x: MARGIN_LEFT + 8 + labelW + 4, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font, color: TEXT_MUTED,
+            });
+          } catch { /* skip */ }
+        }
+
+        yPos -= lineSpacing + 1;
+        continue;
+      }
+
+      // ── Checkbox group fields (bullet list of selected items) ──
+      if (fieldType === 'checkbox_group') {
+        ensureSpace(lineSpacing * 2 + 4);
+
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+
+        if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+          const readableLabels = getCheckboxGroupLabels(field, fieldValue);
+          for (const label of readableLabels) {
+            ensureSpace(lineSpacing + 2);
+            try {
+              currentPage.drawText('>', {
+                x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+                size: 7, font: fontBold, color: BRAND_TEAL,
+              });
+              currentPage.drawText(sanitizeText(label), {
+                x: MARGIN_LEFT + 26, y: yPos - BODY_SIZE,
+                size: BODY_SIZE, font, color: TEXT_PRIMARY,
+              });
+            } catch { /* skip */ }
+            yPos -= lineSpacing;
+          }
+        } else if (field.required) {
+          try {
+            currentPage.drawText('(none selected)', {
+              x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font: fontItalic, color: TEXT_MUTED,
+            });
+          } catch { /* skip */ }
+          yPos -= lineSpacing;
+        }
+        yPos -= 2;
+        continue;
+      }
+
+      // ── Checkbox grid fields ──
+      if (fieldType === 'checkbox_grid' && typeof fieldValue === 'object' && fieldValue !== null) {
+        ensureSpace(lineSpacing * 2 + 4);
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+
+        const checked = Object.entries(fieldValue)
+          .filter(([_, v]) => v === true || v === 'true')
+          .map(([k]) => fieldIdToLabel(k));
+
+        if (checked.length > 0) {
+          for (const item of checked) {
+            ensureSpace(lineSpacing + 2);
+            try {
+              currentPage.drawText('>', {
+                x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+                size: 7, font: fontBold, color: BRAND_TEAL,
+              });
+              currentPage.drawText(sanitizeText(item), {
+                x: MARGIN_LEFT + 26, y: yPos - BODY_SIZE,
+                size: BODY_SIZE, font, color: TEXT_PRIMARY,
+              });
+            } catch { /* skip */ }
+            yPos -= lineSpacing;
+          }
+        } else {
+          try {
+            currentPage.drawText('(none selected)', {
+              x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font: fontItalic, color: TEXT_MUTED,
+            });
+          } catch { /* skip */ }
+          yPos -= lineSpacing;
+        }
+        yPos -= 2;
+        continue;
+      }
+
+      // ── Textarea fields (with light background box) ──
+      if (fieldType === 'textarea') {
+        if (!fieldValue && !field.required) continue;
+
+        ensureSpace(lineSpacing * 2 + 4);
+
+        try {
+          currentPage.drawText(`${fieldLabel}:`, {
+            x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+          });
+        } catch { /* skip */ }
+        yPos -= lineSpacing;
+
+        if (fieldValue) {
+          const textLines = wrapText(String(fieldValue), font, BODY_SIZE, CONTENT_WIDTH - 30);
+          const textBlockH = textLines.length * (BODY_SIZE * LINE_HEIGHT) + 8;
+          ensureSpace(textBlockH);
+
+          // Light background with left accent
+          currentPage.drawRectangle({
+            x: MARGIN_LEFT + 14, y: yPos - textBlockH + 2,
+            width: CONTENT_WIDTH - 20, height: textBlockH,
+            color: rgb(0.975, 0.975, 0.975),
+          });
+          currentPage.drawRectangle({
+            x: MARGIN_LEFT + 14, y: yPos - textBlockH + 2,
+            width: 2, height: textBlockH,
+            color: BRAND_TEAL_MED,
+          });
+
+          yPos -= 4;
+          drawWrappedTextBlock(String(fieldValue), MARGIN_LEFT + 22, font, BODY_SIZE, CONTENT_WIDTH - 34, TEXT_PRIMARY);
+          yPos -= 4;
+        } else if (field.required) {
+          try {
+            currentPage.drawText('--', {
+              x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font, color: TEXT_MUTED,
+            });
+          } catch { /* skip */ }
+          yPos -= lineSpacing;
+        }
+        continue;
+      }
+
+      // ── Regular text/date/time/number/phone/email fields ──
+      ensureSpace(lineSpacing + 4);
+
+      let displayValue = '';
+      if (fieldValue === undefined || fieldValue === null || fieldValue === '') {
+        if (field.required) displayValue = '--';
+        else continue;
+      } else if (typeof fieldValue === 'boolean') {
+        displayValue = fieldValue ? 'Yes' : 'No';
+      } else if (fieldType === 'date') {
+        displayValue = formatDateValue(String(fieldValue));
+      } else if (fieldType === 'time') {
+        displayValue = formatTimeValue(String(fieldValue));
+      } else if (Array.isArray(fieldValue)) {
+        displayValue = fieldValue.join(', ');
+      } else {
+        displayValue = sanitizeText(String(fieldValue));
+      }
+
+      // Auto-capitalize name fields
+      if (isNameField(fieldId) && displayValue && displayValue !== '--') {
+        displayValue = capitalizeName(displayValue);
+      }
+
+      try {
+        currentPage.drawText(`${fieldLabel}:`, {
+          x: MARGIN_LEFT + 8, y: yPos - BODY_SIZE,
+          size: BODY_SIZE, font: fontBold, color: TEXT_SECONDARY,
+        });
+      } catch { /* skip */ }
+
+      const labelW = fontBold.widthOfTextAtSize(`${fieldLabel}: `, BODY_SIZE);
+      const valX = MARGIN_LEFT + 8 + labelW + 4;
+      const availW = CONTENT_WIDTH - labelW - 20;
+
+      if (availW > 80 && displayValue.length < 80) {
+        try {
+          currentPage.drawText(displayValue, {
+            x: valX, y: yPos - BODY_SIZE,
+            size: BODY_SIZE, font,
+            color: displayValue === '--' ? TEXT_MUTED : TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+      } else if (availW > 80) {
+        // Wrap long values inline
+        const valLines = wrapText(displayValue, font, BODY_SIZE, availW);
+        try {
+          currentPage.drawText(valLines[0], {
+            x: valX, y: yPos - BODY_SIZE, size: BODY_SIZE, font, color: TEXT_PRIMARY,
+          });
+        } catch { /* skip */ }
+        for (let i = 1; i < valLines.length; i++) {
+          yPos -= lineSpacing;
+          ensureSpace(lineSpacing);
+          try {
+            currentPage.drawText(valLines[i], {
+              x: MARGIN_LEFT + 16, y: yPos - BODY_SIZE,
+              size: BODY_SIZE, font, color: TEXT_PRIMARY,
+            });
+          } catch { /* skip */ }
+        }
+      } else {
+        yPos -= lineSpacing;
+        drawWrappedTextBlock(displayValue, MARGIN_LEFT + 16, font, BODY_SIZE, CONTENT_WIDTH - 24,
+          displayValue === '--' ? TEXT_MUTED : TEXT_PRIMARY);
+      }
+
+      yPos -= lineSpacing + 1;
+    }
+
+    // ── Auto-apply signature to this section ──
+    // Apply the captured signature only to sections that appear on the
+    // Electronic Signature Acknowledgement checklist, and only if the
+    // section doesn't already have its own signature field rendered above.
+    if (globalSignatureImage) {
+      const sectionHasOwnSignature = fields.some((f: any) => f.type === 'signature');
+      if (!sectionHasOwnSignature && shouldApplySignature(sectionTitle)) {
+        await drawGlobalSignature();
+      }
+    }
+
+    // Section separator line
+    yPos -= 4;
+    ensureSpace(4);
+    currentPage.drawLine({
+      start: { x: MARGIN_LEFT + 4, y: yPos },
+      end: { x: PAGE_WIDTH - MARGIN_RIGHT - 4, y: yPos },
+      thickness: 0.25,
+      color: BORDER_LIGHT,
+    });
+    yPos -= 8;
+  }
+
+  // ====== SUBMISSION FOOTER ======
+  ensureSpace(40);
+  yPos -= 6;
+  currentPage.drawLine({
+    start: { x: MARGIN_LEFT, y: yPos },
+    end: { x: PAGE_WIDTH - MARGIN_RIGHT, y: yPos },
+    thickness: 0.75,
+    color: BRAND_TEAL,
+  });
+  yPos -= 14;
+
+  const submittedDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const footerText = applicant_name
+    ? `Submitted by ${sanitizeText(applicant_name)} on ${submittedDate}`
+    : `Submitted on ${submittedDate}`;
+
+  try {
+    currentPage.drawText(footerText, {
+      x: MARGIN_LEFT, y: yPos - SMALL_SIZE,
+      size: SMALL_SIZE, font: fontItalic, color: TEXT_MUTED,
+    });
+  } catch { /* skip */ }
+
+  // Signature metadata
+  if (signatureMetadata) {
+    yPos -= 12;
+    const sigParts: string[] = [];
+    if (signatureMetadata.timestamp) {
+      try {
+        const d = new Date(signatureMetadata.timestamp);
+        sigParts.push(`Signed: ${d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`);
+      } catch {
+        sigParts.push(`Signed: ${signatureMetadata.timestamp}`);
+      }
+    }
+    if (signatureMetadata.ip_address) {
+      sigParts.push(`IP: ${signatureMetadata.ip_address}`);
+    }
+    if (sigParts.length > 0) {
+      try {
+        currentPage.drawText(sigParts.join('  |  '), {
+          x: MARGIN_LEFT, y: yPos - SMALL_SIZE,
+          size: SMALL_SIZE, font, color: TEXT_MUTED,
+        });
+      } catch { /* skip */ }
+    }
+  }
+
+  // ====== ADD PAGE FOOTERS & PAGE NUMBERS ======
+  const totalPages = pdfDoc.getPageCount();
+  for (let i = 0; i < totalPages; i++) {
+    const pg = pdfDoc.getPage(i);
+    drawPageFooter(pg, i + 1);
+
+    // Page number (right side)
+    const pageNumText = `Page ${i + 1} of ${totalPages}`;
+    const pnWidth = font.widthOfTextAtSize(pageNumText, 7);
+    try {
+      pg.drawText(pageNumText, {
+        x: PAGE_WIDTH - MARGIN_RIGHT - pnWidth, y: 26,
+        size: 7, font, color: TEXT_MUTED,
+      });
+    } catch { /* skip */ }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  const safeName = sanitizeText(formDef.form_name) || 'Untitled_Form';
+  const fileName = `${safeName.replace(/[^a-zA-Z0-9]/g, '_')}_filled.pdf`;
+
+  return new NextResponse(Buffer.from(pdfBytes), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Content-Length': String(pdfBytes.length),
+    },
+  });
+}

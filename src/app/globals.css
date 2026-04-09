@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ─── Form Content HTML Styling ────────────────────────────────────
+   Belt-and-suspenders styles for rendered HTML content in form sections.
+   Tailwind's preflight resets headings, lists, etc. These restore them
+   for any element with the .form-content or .prose class.
+   ─────────────────────────────────────────────────────────────────── */
+.form-content h2,
+.prose h2 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #1a1a2e;
+  line-height: 1.3;
+}
+
+.form-content h3,
+.prose h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+  color: #1f2937;
+  line-height: 1.3;
+}
+
+.form-content h4,
+.prose h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+  color: #374151;
+  line-height: 1.3;
+}
+
+.form-content p,
+.prose p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.65;
+}
+
+.form-content ul,
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.form-content ol,
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.form-content li,
+.prose li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+  padding-left: 0.25rem;
+  line-height: 1.6;
+}
+
+.form-content strong,
+.prose strong {
+  font-weight: 700;
+}
+
+.form-content em,
+.prose em {
+  font-style: italic;
+}

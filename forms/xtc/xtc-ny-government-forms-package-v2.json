@@ -1,0 +1,1198 @@
+{
+  "form_package": {
+    "version": "2.0",
+    "form_name": "X-Treme Care NY Government Forms",
+    "company": "X-Treme Care, LLC",
+    "doc_number": "XTC-GOV-2026",
+    "render_mode": "replica",
+    "total_pages": 8,
+    "page_sizes": {
+      "1": [612.0, 792.0],
+      "2": [612.0, 792.0],
+      "3": [612.0, 792.0],
+      "4": [612.0, 792.0],
+      "5": [612.0, 792.0],
+      "6": [612.0, 792.0],
+      "7": [612.0, 792.0],
+      "8": [612.0, 792.0]
+    },
+    "coordinate_system": "top-left",
+    "notes": "8-page government forms package containing DOH-102 Criminal History Record Check, I-9 Employment Eligibility Verification, W-4 Employee Withholding Certificate, LS 62 Notice of Pay Rate for LHCSA Regular caregivers, LS 62 Notice of Pay Rate for NHTD caregivers, and NYC Safe and Sick Leave Notice. These use replica render mode because they are government forms with specific required layouts. The original PDF pages render as backgrounds with field overlays positioned on top. Fields auto-fill from caregiver profile where possible."
+  },
+  "sub_forms": [
+    {
+      "id": "doh_102_criminal_history",
+      "name": "Criminal History Record Check (DOH-102)",
+      "title": "NYS Department of Health Criminal History Record Check - DOH-102",
+      "pages": [1],
+      "always_show": true,
+      "render_mode": "replica",
+      "content": "<h2>Criminal History Record Check (DOH-102)</h2><p>NYS Department of Health form for fingerprinting consent and background check authorization. Section 1 collects subject individual information. Section 2 contains attestation regarding criminal convictions and findings. Agency information is pre-filled for X-TREME CARE, LLC.</p>",
+      "summary": "NYS DOH-102 Criminal History Record Check form for fingerprinting consent and background verification.",
+      "fields": [
+        {
+          "id": "doh102_last_name",
+          "label": "Last Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 43,
+            "y": 162,
+            "w": 155,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "last_name"
+        },
+        {
+          "id": "doh102_first_name",
+          "label": "First Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 210,
+            "y": 162,
+            "w": 155,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "first_name"
+        },
+        {
+          "id": "doh102_middle_initial",
+          "label": "Middle Initial",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 385,
+            "y": 162,
+            "w": 55,
+            "h": 20
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_maiden_name",
+          "label": "Maiden Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 460,
+            "y": 162,
+            "w": 115,
+            "h": 20
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_dob_month",
+          "label": "Date of Birth - Month",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 43,
+            "y": 195,
+            "w": 35,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "dob_month"
+        },
+        {
+          "id": "doh102_dob_day",
+          "label": "Date of Birth - Day",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 85,
+            "y": 195,
+            "w": 35,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "dob_day"
+        },
+        {
+          "id": "doh102_dob_year",
+          "label": "Date of Birth - Year",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 130,
+            "y": 195,
+            "w": 50,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "dob_year"
+        },
+        {
+          "id": "doh102_alias_aka",
+          "label": "Alias/AKA",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 210,
+            "y": 195,
+            "w": 170,
+            "h": 20
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_mothers_maiden_name",
+          "label": "Mother's Maiden Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 400,
+            "y": 195,
+            "w": 175,
+            "h": 20
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_mailing_address",
+          "label": "Mailing Address",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 43,
+            "y": 225,
+            "w": 255,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "address"
+        },
+        {
+          "id": "doh102_city",
+          "label": "City",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 310,
+            "y": 225,
+            "w": 120,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "city"
+        },
+        {
+          "id": "doh102_state",
+          "label": "State",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 445,
+            "y": 225,
+            "w": 60,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "state"
+        },
+        {
+          "id": "doh102_zip",
+          "label": "ZIP",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 520,
+            "y": 225,
+            "w": 55,
+            "h": 20
+          },
+          "required": true,
+          "auto_fill_from": "zip"
+        },
+        {
+          "id": "doh102_convicted_yes",
+          "label": "Have been convicted",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 53,
+            "y": 380,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_convicted_no",
+          "label": "Have not been convicted",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 53,
+            "y": 395,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_finding_yes",
+          "label": "Do have finding",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 53,
+            "y": 410,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_finding_no",
+          "label": "Do not have finding",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 53,
+            "y": 425,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_explanation",
+          "label": "Explanation of Conviction or Finding",
+          "type": "text",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 43,
+            "y": 440,
+            "w": 500,
+            "h": 80
+          },
+          "required": false
+        },
+        {
+          "id": "doh102_signature",
+          "label": "Applicant Signature",
+          "type": "signature",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 100,
+            "y": 645,
+            "w": 300,
+            "h": 25
+          },
+          "required": true
+        },
+        {
+          "id": "doh102_date",
+          "label": "Date",
+          "type": "date",
+          "entity": "employee",
+          "page": 1,
+          "pos": {
+            "x": 460,
+            "y": 645,
+            "w": 100,
+            "h": 25
+          },
+          "required": true,
+          "default_today": true
+        }
+      ]
+    },
+    {
+      "id": "i9_employment_eligibility",
+      "name": "I-9 Employment Eligibility Verification",
+      "title": "USCIS Form I-9 - Employment Eligibility Verification",
+      "pages": [2],
+      "always_show": true,
+      "render_mode": "replica",
+      "content": "<h2>I-9 Employment Eligibility Verification</h2><p>USCIS Form I-9 for employment eligibility verification. Section 1 contains employee information fields. Section 2 is employer-completed for document verification. Employee completes personal information and provides signature and date to attest eligibility to work in the United States.</p>",
+      "summary": "USCIS Form I-9 for employment eligibility verification and I-94/I-94A number documentation.",
+      "fields": [
+        {
+          "id": "i9_last_name",
+          "label": "Last Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 33,
+            "y": 168,
+            "w": 145,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "last_name"
+        },
+        {
+          "id": "i9_first_name",
+          "label": "First Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 185,
+            "y": 168,
+            "w": 140,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "first_name"
+        },
+        {
+          "id": "i9_middle_initial",
+          "label": "Middle Initial",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 340,
+            "y": 168,
+            "w": 65,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "i9_other_last_names",
+          "label": "Other Last Names Used",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 420,
+            "y": 168,
+            "w": 155,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "i9_address",
+          "label": "Address - Street Address",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 33,
+            "y": 196,
+            "w": 175,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "address"
+        },
+        {
+          "id": "i9_apt_number",
+          "label": "Apartment Number",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 215,
+            "y": 196,
+            "w": 55,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "i9_city",
+          "label": "City",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 280,
+            "y": 196,
+            "w": 100,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "city"
+        },
+        {
+          "id": "i9_state",
+          "label": "State",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 395,
+            "y": 196,
+            "w": 60,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "state"
+        },
+        {
+          "id": "i9_zip",
+          "label": "ZIP Code",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 465,
+            "y": 196,
+            "w": 55,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "zip"
+        },
+        {
+          "id": "i9_dob_month",
+          "label": "Date of Birth - Month",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 33,
+            "y": 225,
+            "w": 30,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "dob_month"
+        },
+        {
+          "id": "i9_dob_day",
+          "label": "Date of Birth - Day",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 68,
+            "y": 225,
+            "w": 30,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "dob_day"
+        },
+        {
+          "id": "i9_dob_year",
+          "label": "Date of Birth - Year",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 103,
+            "y": 225,
+            "w": 40,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "dob_year"
+        },
+        {
+          "id": "i9_ssn_group1",
+          "label": "Social Security Number - Group 1",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 168,
+            "y": 225,
+            "w": 30,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "ssn_group1"
+        },
+        {
+          "id": "i9_ssn_group2",
+          "label": "Social Security Number - Group 2",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 203,
+            "y": 225,
+            "w": 30,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "ssn_group2"
+        },
+        {
+          "id": "i9_ssn_group3",
+          "label": "Social Security Number - Group 3",
+          "type": "text",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 238,
+            "y": 225,
+            "w": 30,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "ssn_group3"
+        },
+        {
+          "id": "i9_email",
+          "label": "Email Address",
+          "type": "email",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 270,
+            "y": 225,
+            "w": 145,
+            "h": 18
+          },
+          "required": false,
+          "auto_fill_from": "email"
+        },
+        {
+          "id": "i9_phone",
+          "label": "Phone Number",
+          "type": "phone",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 430,
+            "y": 225,
+            "w": 145,
+            "h": 18
+          },
+          "required": false,
+          "auto_fill_from": "phone"
+        },
+        {
+          "id": "i9_citizenship_us",
+          "label": "U.S. Citizen",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 45,
+            "y": 275,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "i9_citizenship_permanent_resident",
+          "label": "Lawful Permanent Resident",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 45,
+            "y": 290,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "i9_citizenship_authorized_work",
+          "label": "Authorized to Work",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 45,
+            "y": 305,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "i9_citizenship_expiration",
+          "label": "Expiration Date of Authorization",
+          "type": "date",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 190,
+            "y": 305,
+            "w": 100,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "i9_signature",
+          "label": "Signature of Employee",
+          "type": "signature",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 33,
+            "y": 420,
+            "w": 250,
+            "h": 20
+          },
+          "required": true
+        },
+        {
+          "id": "i9_date",
+          "label": "Date",
+          "type": "date",
+          "entity": "employee",
+          "page": 2,
+          "pos": {
+            "x": 420,
+            "y": 420,
+            "w": 120,
+            "h": 20
+          },
+          "required": true,
+          "default_today": true
+        },
+        {
+          "id": "i9_first_day_employment",
+          "label": "First Day of Employment",
+          "type": "date",
+          "entity": "employer",
+          "page": 2,
+          "pos": {
+            "x": 33,
+            "y": 480,
+            "w": 120,
+            "h": 18
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "w4_withholding",
+      "name": "W-4 Employee's Withholding Certificate",
+      "title": "Form W-4 - Employee's Withholding Certificate (2025)",
+      "pages": [3],
+      "always_show": true,
+      "render_mode": "replica",
+      "content": "<h2>W-4 Employee's Withholding Certificate</h2><p>IRS Form W-4 for federal income tax withholding. Step 1 collects employee personal information and filing status. Step 3 claims dependents. Step 4 includes other adjustments. Employee provides signature and date. Employer information is pre-filled for X-Treme Care, LLC.</p>",
+      "summary": "IRS Form W-4 for federal income tax withholding certificate with dependent claims and adjustment entries.",
+      "fields": [
+        {
+          "id": "w4_first_name_middle_initial",
+          "label": "First Name and Middle Initial",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 100,
+            "y": 72,
+            "w": 200,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "first_name_middle_initial"
+        },
+        {
+          "id": "w4_last_name",
+          "label": "Last Name",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 310,
+            "y": 72,
+            "w": 150,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "last_name"
+        },
+        {
+          "id": "w4_ssn",
+          "label": "Social Security Number",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 500,
+            "y": 72,
+            "w": 75,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "ssn"
+        },
+        {
+          "id": "w4_address",
+          "label": "Address",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 35,
+            "y": 96,
+            "w": 540,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "address"
+        },
+        {
+          "id": "w4_city_state_zip",
+          "label": "City or Town, State, and ZIP Code",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 35,
+            "y": 118,
+            "w": 540,
+            "h": 18
+          },
+          "required": true,
+          "auto_fill_from": "city_state_zip"
+        },
+        {
+          "id": "w4_filing_status_single",
+          "label": "Filing Status - Single",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 50,
+            "y": 145,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "w4_filing_status_married_jointly",
+          "label": "Filing Status - Married Filing Jointly",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 50,
+            "y": 160,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "w4_filing_status_married_separately",
+          "label": "Filing Status - Married Filing Separately",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 50,
+            "y": 175,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "w4_filing_status_head_of_household",
+          "label": "Filing Status - Head of Household",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 50,
+            "y": 190,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "w4_qualifying_children",
+          "label": "Qualifying Children Amount",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 490,
+            "y": 370,
+            "w": 80,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "w4_other_dependents",
+          "label": "Other Dependents Amount",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 490,
+            "y": 390,
+            "w": 80,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "w4_total_dependents",
+          "label": "Total Dependents",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 510,
+            "y": 415,
+            "w": 60,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "w4_other_income",
+          "label": "Other Income",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 510,
+            "y": 445,
+            "w": 60,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "w4_deductions",
+          "label": "Deductions",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 510,
+            "y": 470,
+            "w": 60,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "w4_extra_withholding",
+          "label": "Extra Withholding",
+          "type": "text",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 510,
+            "y": 495,
+            "w": 60,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "w4_signature",
+          "label": "Employee Signature",
+          "type": "signature",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 35,
+            "y": 545,
+            "w": 350,
+            "h": 20
+          },
+          "required": true
+        },
+        {
+          "id": "w4_date",
+          "label": "Date",
+          "type": "date",
+          "entity": "employee",
+          "page": 3,
+          "pos": {
+            "x": 430,
+            "y": 545,
+            "w": 100,
+            "h": 20
+          },
+          "required": true,
+          "default_today": true
+        }
+      ]
+    },
+    {
+      "id": "ls62_lhcsa_regular",
+      "name": "LS 62 Notice of Pay Rate - LHCSA Regular",
+      "title": "NYS Labor Law LS 62 Notice of Pay Rate - LHCSA Regular Caregivers",
+      "pages": [4, 5],
+      "always_show": true,
+      "render_mode": "replica",
+      "content": "<h2>LS 62 Notice of Pay Rate - LHCSA Regular</h2><p>New York State Labor Law Section 195 wage notice form for Licensed Home Care Service Agency (LHCSA) regular caregivers. Provides notification of pay rates, overtime rates, allowances, wage supplements, and payday information. Employee acknowledgement section confirms receipt of the notice in their primary language.</p>",
+      "summary": "NYS LS 62 wage notice form for LHCSA regular caregivers with employee acknowledgement section.",
+      "fields": [
+        {
+          "id": "ls62_lhcsa_regular__primary_language",
+          "label": "Primary Language",
+          "type": "text",
+          "entity": "employee",
+          "page": 5,
+          "pos": {
+            "x": 200,
+            "y": 265,
+            "w": 200,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "ls62_lhcsa_regular__language_ack_english_primary",
+          "label": "Language Acknowledgement - English is Primary",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 5,
+          "pos": {
+            "x": 519,
+            "y": 269,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "ls62_lhcsa_regular__language_ack_primary_lang",
+          "label": "Language Acknowledgement - Given in Primary Language",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 5,
+          "pos": {
+            "x": 545,
+            "y": 283,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "ls62_lhcsa_regular__employee_name_print",
+          "label": "Employee Name (Print)",
+          "type": "text",
+          "entity": "employee",
+          "page": 5,
+          "pos": {
+            "x": 120,
+            "y": 300,
+            "w": 300,
+            "h": 18
+          },
+          "required": false,
+          "auto_fill_from": "full_name"
+        },
+        {
+          "id": "ls62_lhcsa_regular__employee_signature",
+          "label": "Employee Signature",
+          "type": "signature",
+          "entity": "employee",
+          "page": 5,
+          "pos": {
+            "x": 50,
+            "y": 325,
+            "w": 250,
+            "h": 20
+          },
+          "required": true
+        },
+        {
+          "id": "ls62_lhcsa_regular__date_signed",
+          "label": "Date Signed",
+          "type": "date",
+          "entity": "employee",
+          "page": 5,
+          "pos": {
+            "x": 380,
+            "y": 325,
+            "w": 150,
+            "h": 20
+          },
+          "required": true,
+          "default_today": true
+        }
+      ]
+    },
+    {
+      "id": "ls62_nhtd",
+      "name": "LS 62 Notice of Pay Rate - NHTD",
+      "title": "NYS Labor Law LS 62 Notice of Pay Rate - NHTD Caregivers",
+      "pages": [6, 7],
+      "always_show": true,
+      "render_mode": "replica",
+      "content": "<h2>LS 62 Notice of Pay Rate - NHTD</h2><p>New York State Labor Law Section 195 wage notice form for Non-Health-Related Tasks (NHTD) caregivers. Provides notification of pay rates, overtime rates, allowances, wage supplements, and payday information. Employee acknowledgement section confirms receipt of the notice in their primary language.</p>",
+      "summary": "NYS LS 62 wage notice form for NHTD caregivers with employee acknowledgement section.",
+      "fields": [
+        {
+          "id": "ls62_nhtd__primary_language",
+          "label": "Primary Language",
+          "type": "text",
+          "entity": "employee",
+          "page": 7,
+          "pos": {
+            "x": 200,
+            "y": 265,
+            "w": 200,
+            "h": 18
+          },
+          "required": false
+        },
+        {
+          "id": "ls62_nhtd__language_ack_english_primary",
+          "label": "Language Acknowledgement - English is Primary",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 7,
+          "pos": {
+            "x": 519,
+            "y": 269,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "ls62_nhtd__language_ack_primary_lang",
+          "label": "Language Acknowledgement - Given in Primary Language",
+          "type": "checkbox",
+          "entity": "employee",
+          "page": 7,
+          "pos": {
+            "x": 545,
+            "y": 283,
+            "w": 10,
+            "h": 10
+          },
+          "required": false
+        },
+        {
+          "id": "ls62_nhtd__employee_name_print",
+          "label": "Employee Name (Print)",
+          "type": "text",
+          "entity": "employee",
+          "page": 7,
+          "pos": {
+            "x": 120,
+            "y": 300,
+            "w": 300,
+            "h": 18
+          },
+          "required": false,
+          "auto_fill_from": "full_name"
+        },
+        {
+          "id": "ls62_nhtd__employee_signature",
+          "label": "Employee Signature",
+          "type": "signature",
+          "entity": "employee",
+          "page": 7,
+          "pos": {
+            "x": 50,
+            "y": 325,
+            "w": 250,
+            "h": 20
+          },
+          "required": true
+        },
+        {
+          "id": "ls62_nhtd__date_signed",
+          "label": "Date Signed",
+          "type": "date",
+          "entity": "employee",
+          "page": 7,
+          "pos": {
+            "x": 380,
+            "y": 325,
+            "w": 150,
+            "h": 20
+          },
+          "required": true,
+          "default_today": true
+        }
+      ]
+    },
+    {
+      "id": "nyc_safe_sick_leave",
+      "name": "NYC Safe and Sick Leave Notice",
+      "title": "NYC Safe and Sick Leave Notice - Receipt of Employee Handbook",
+      "pages": [8],
+      "always_show": true,
+      "render_mode": "replica",
+      "content": "<h2>NYC Safe and Sick Leave Notice</h2><p>Receipt of employee handbook acknowledging that the employee has received and understands X-Treme Care LLC's policies regarding safe and sick leave requirements under NYC law. Employee certifies receipt by providing their name (printed), signature, and date of acknowledgement.</p>",
+      "summary": "NYC Safe and Sick Leave Notice with employee receipt acknowledgement for employee handbook.",
+      "fields": [
+        {
+          "id": "nyc_safe_sick_leave__employee_name_print",
+          "label": "Employee Name (Printed)",
+          "type": "text",
+          "entity": "employee",
+          "page": 8,
+          "pos": {
+            "x": 50,
+            "y": 725,
+            "w": 400,
+            "h": 18
+          },
+          "required": false,
+          "auto_fill_from": "full_name"
+        },
+        {
+          "id": "nyc_safe_sick_leave__employee_signature",
+          "label": "Employee Signature",
+          "type": "signature",
+          "entity": "employee",
+          "page": 8,
+          "pos": {
+            "x": 50,
+            "y": 750,
+            "w": 400,
+            "h": 20
+          },
+          "required": true
+        },
+        {
+          "id": "nyc_safe_sick_leave__date_signed",
+          "label": "Date Signed",
+          "type": "date",
+          "entity": "employee",
+          "page": 8,
+          "pos": {
+            "x": 50,
+            "y": 775,
+            "w": 200,
+            "h": 18
+          },
+          "required": true,
+          "default_today": true
+        }
+      ]
+    }
+  ],
+  "removed_fields": []
+}
