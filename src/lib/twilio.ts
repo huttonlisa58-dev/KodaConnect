@@ -18,7 +18,7 @@ function getClient() {
 }
 
 // Send OTP using Twilio Verify (works on trial accounts without phone verification)
-export async function sendVerifyOTP(to: string): Promise<{ success: boolean; sid?: string; error?: string }> {
+export async function sendVerifyOTP(to: string): Promise<{ success: boolean; sid?: string; error?: string; dev_mode?: boolean }> {
   const client = getClient();
   const verifySid = process.env.TWILIO_VERIFY_SID;
   if (!client || !verifySid) {
