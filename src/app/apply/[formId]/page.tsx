@@ -184,6 +184,7 @@ export default function ApplyFormPage() {
       }
 
       setPageState('code');
+      if (data.dev_mode) setOtpError('📱 Dev mode: SMS blocked. Use code: 123456');
       // Focus the code input after state change
       setTimeout(() => codeInputRef.current?.focus(), 100);
     } catch (err) {
