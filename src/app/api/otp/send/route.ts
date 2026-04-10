@@ -59,9 +59,12 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://koda-connect.vercel.app';
     const formUrl = token ? `${baseUrl}/form/${token}` : null;
 
+    const devMode = (verifyResult as any).dev_mode === true;
     return NextResponse.json({
       success: true,
-      formUrl, // Frontend can display this as backup
+      formUrl,
+      dev_mode: devMode,
+      ...(devMode && { dev_code: '123456' }),
     });
   } catch (error) {
     console.error('OTP send error:', error);
