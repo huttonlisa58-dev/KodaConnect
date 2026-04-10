@@ -269,6 +269,7 @@ export default function ApplicantFormPage() {
       }
 
       setOtpSent(true);
+      if (data.dev_mode) setError('📱 Dev mode: SMS blocked. Use code: 123456');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send verification code');
     } finally {
