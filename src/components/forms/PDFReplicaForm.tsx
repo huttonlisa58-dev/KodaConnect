@@ -557,7 +557,7 @@ export default function PDFReplicaForm({
     // Show a gray dashed placeholder box instead of an interactive input.
     const fieldDef = fieldDefMap[fieldId];
     if (fieldDef && isStaffField(fieldDef)) {
-      const topLeftPos = bottomLeftToTopLeft(pos.x, pos.y, pos.width, pos.height, pageHeight);
+      const topLeftPos = bottomLeftToTopLeft(pos.x, pos.y, pos.width, pos.height, pageHeight / scale);
       const roleLabel = fieldDef.signer_role === 'hr_admin'
         ? 'To be completed by employer'
         : 'Pending RN signature';
@@ -595,7 +595,7 @@ export default function PDFReplicaForm({
     }
 
     // Convert bottom-left → top-left for rendering
-    const topLeftPos = bottomLeftToTopLeft(pos.x, pos.y, pos.width, pos.height, pageHeight);
+    const topLeftPos = bottomLeftToTopLeft(pos.x, pos.y, pos.width, pos.height, pageHeight / scale);
 
     const style: React.CSSProperties = {
       position: 'absolute',
