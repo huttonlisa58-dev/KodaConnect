@@ -105,7 +105,8 @@ function fitText(
 export async function fillSubFormPdf(
   pdfBytes: Uint8Array,
   fieldMappings: PacketFieldMapping[],
-  formData: Record<string, any>
+  formData: Record<string, any>,
+  options?: { applicantName?: string; submissionDate?: string; [key: string]: any }
 ): Promise<Uint8Array> {
   // Delegate to the main fill logic via packet-level fill
   const { PDFDocument } = await import('pdf-lib');
