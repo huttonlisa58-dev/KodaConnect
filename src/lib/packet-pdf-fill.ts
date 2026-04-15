@@ -138,11 +138,12 @@ export async function fillSubFormPdf(
 }
 
 export async function combineFilledPdfs(
-  pdfBytesArray: Uint8Array[]
+  pdfBytesArray: (Uint8Array | { pdfBytes: Uint8Array })[]
 ): Promise<Uint8Array> {
   const { PDFDocument } = await import('pdf-lib');
   const merged = await PDFDocument.create();
-  for (const bytes of pdfBytesArray) {
+  for (const item of pdfBytesArray) {
+    const bytes = item instanceof Uint8Array ? item : (item as any).pdfBytes;
     const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const pages = await merged.copyPages(doc, doc.getPageIndices());
     pages.forEach(p => merged.addPage(p));
