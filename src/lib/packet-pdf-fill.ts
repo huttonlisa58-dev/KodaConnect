@@ -97,3 +97,54 @@ function fitText(
   }
   return { text: truncated, finalFontSize: fontSize };
 }
+
+
+// ─── Stub exports required by generate-pdf routes ───────────────────────────
+// These maintain backward compatibility with existing API routes.
+
+export async function fillSubFormPdf(
+  pdfBytes: Uint8Array,
+  fieldMappings: PacketFieldMapping[],
+  formData: Record<string, any>
+): Promise<Uint8Array> {
+  // Delegate to the main fill logic via packet-level fill
+  const { PDFDocument } = await import('pdf-lib');
+  const doc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const font = await doc.embedFont('Helvetica');
+
+  for (const mapping of fieldMappings) {
+    const value = formData[mapping.pool_field_id];
+    if (!value && value !== 0) continue;
+    for (const pos of [mapping.position]) {
+      const pageIndex = pos.page;
+      if (pageIndex < 0 || pageIndex >= pages.length) continue;
+      const page = pages[pageIndex];
+      const { height } = page.getSize();
+      const text = String(value);
+      const fontSize = pos.font_size || 10;
+      page.drawText(text, {
+        x: pos.x,
+        y: pos.y,
+        size: fontSize,
+        font,
+        maxWidth: pos.width,
+      });
+    }
+  }
+
+  return await doc.save();
+}
+
+export async function combineFilledPdfs(
+  pdfBytesArray: Uint8Array[]
+): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const merged = await PDFDocument.create();
+  for (const bytes of pdfBytesArray) {
+    const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach(p => merged.addPage(p));
+  }
+  return await merged.save();
+}
