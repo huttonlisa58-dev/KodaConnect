@@ -276,7 +276,7 @@ export default function ImportWizardPage() {
             label: f.label || `Field ${idx + 1}`,
             type: f.type || 'text',
             entity: f.entity || 'employee',
-            page: f.page || 1,
+            page: f.page != null ? f.page : 1,
             pos: f.pos || { x: 0, y: 0, w: 0, h: 0 },
             required: f.required || false,
             ...(f.options ? { options: f.options } : {}),
