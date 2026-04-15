@@ -273,7 +273,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         label: entry.label,
         type: entry.type,
         positions: entry.positions.map((p: FieldPositionCoords) => ({
-          page: p.page - 1, // Convert to 0-indexed for pdf-lib
+          page: Math.max(0, p.page - 1), // Convert to 0-indexed for pdf-lib (guard: never below 0)
           x: Math.round(p.x * 10) / 10,
           y: Math.round(p.y * 10) / 10,
           width: Math.round(p.width * 10) / 10,
