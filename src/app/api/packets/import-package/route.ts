@@ -257,8 +257,7 @@ function normalizeContent(content: unknown): string | undefined {
       if (typeof block === 'string') return '<p>' + block + '</p>';
       if (block && typeof block === 'object' && block.text) { const tag = block.type === 'heading' ? 'h3' : 'p'; return '<' + tag + '>' + block.text + '</' + tag + '>'; }
       return '';
-    }).filter(Boolean).join('
-');
+    }).filter(Boolean).join('\n');
     return html || undefined;
   }
   return String(content);
