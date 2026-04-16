@@ -93,7 +93,7 @@ export default function PDFReplicaForm({
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [scale, setScale] = useState(1.5);
+  const [scale, setScale] = useState(0); // 0 = not yet computed
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -895,7 +895,7 @@ export default function PDFReplicaForm({
               className="absolute top-0 left-0"
               style={{ width: canvasSize.width || 0, height: canvasSize.height || 0 }}
             >
-              {currentPageFields.map(({ fieldId, field, pos }) =>
+              {scale > 0 && currentPageFields.map(({ fieldId, field, pos }) =>
                 renderFieldInput(fieldId, pos, field.label)
               )}
             </div>
