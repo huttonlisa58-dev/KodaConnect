@@ -94,6 +94,7 @@ export default function PDFReplicaForm({
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [scale, setScale] = useState(1.5);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -309,6 +310,7 @@ export default function PDFReplicaForm({
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
+        setCanvasSize({ width: viewport.width, height: viewport.height });
 
         setScale(computedScale);
 
@@ -891,7 +893,7 @@ export default function PDFReplicaForm({
             {/* Field Input Overlays */}
             <div
               className="absolute top-0 left-0"
-              style={{ width: canvasRef.current?.width || 0, height: canvasRef.current?.height || 0 }}
+              style={{ width: canvasSize.width || 0, height: canvasSize.height || 0 }}
             >
               {currentPageFields.map(({ fieldId, field, pos }) =>
                 renderFieldInput(fieldId, pos, field.label)
