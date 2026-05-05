@@ -75,8 +75,26 @@ export default function MobileFormWizard({
   const primaryMedium = `${primary}15`;
 
   // Filter sections: exclude hidden_from_applicant, separate content-only from field sections
+ // Filter sections: exclude hidden_from_applicant, separate content-only from field sections
   const allSections = definition.sections || [];
-  const applicantSections = allSections.filter((s) => !(s as any).hidden_from_applicant);
+  const baseApplicantSections = allSections.filter((s) => !(s as any).hidden_from_applicant);
+
+  // ── Two-stage workflow: hide employer-only fields when employee is filling ──
+  // readOnly=false means public submission (employee fill), readOnly=true means admin viewing.
+  // For admin "Edit" mode, this component isn't used (office portal uses its own renderer).
+  const isPublicFill = !readOnly;
+  const applicantSections = isPublicFill
+    ? baseApplicantSections.map((section: any) => ({
+        ...section,
+        fields: (section.fields || []).filter((f: any) => {
+          if (f.admin_only === true) return false;
+          if (f.public_visible === false) return false;
+          if (f.stage === 'employer') return false;
+          return true;
+        }),
+      }))
+    : baseApplicantSections;
+
 
   // ── Training course detection ──
   // Forms with section_group_order (e.g. training courses) interleave content
