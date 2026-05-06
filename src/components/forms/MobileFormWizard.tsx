@@ -90,6 +90,8 @@ export default function MobileFormWizard({
           if (f.admin_only === true) return false;
           if (f.public_visible === false) return false;
           if (f.stage === 'employer') return false;
+          // Hide staff fields (hr_admin, rn_evaluator) from public/applicant view
+          if (f.signer_role && f.signer_role !== 'applicant') return false;
           return true;
         }),
       }))
