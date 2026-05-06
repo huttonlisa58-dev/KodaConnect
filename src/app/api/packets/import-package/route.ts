@@ -110,6 +110,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           ...((field as any).text_size && { text_size: (field as any).text_size }),
           ...((field as any).always_render && { always_render: true }),
           ...((field as any).rotation !== undefined && { rotation: (field as any).rotation }),
+          ...((field as any).stage && { stage: (field as any).stage }),
+          ...((field as any).admin_only === true && { admin_only: true }),
+          ...((field as any).public_visible === false && { public_visible: false }),
         });
       }
 
