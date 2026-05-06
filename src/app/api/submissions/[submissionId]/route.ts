@@ -88,19 +88,52 @@ export async function PATCH(
     const body = await request.json();
     const supabase = createServerSupabaseClient();
 
+    // Whitelist columns that exist in the form_submissions table.
+    // Anything else (e.g. edited_by, signed_by) is dropped to avoid 500 errors
+    // from Supabase rejecting unknown columns.
+    const ALLOWED_COLUMNS = new Set([
+      'form_data',
+      'submission_data',
+      'status',
+      'notes',
+      'reviewed_by',
+      'reviewed_at',
+      'filled_pdf_url',
+      'participant_name',
+      'participant_id',
+      'chw_name',
+      'chw_phone',
+      'signature_metadata',
+    ]);
+
+    const updatePayload: Record<string, any> = { updated_at: new Date().toISOString() };
+    const droppedKeys: string[] = [];
+    for (const [key, value] of Object.entries(body)) {
+      if (ALLOWED_COLUMNS.has(key)) {
+        updatePayload[key] = value;
+      } else {
+        droppedKeys.push(key);
+      }
+    }
+    if (droppedKeys.length) {
+      console.warn('[submissions PATCH] Ignored unknown columns:', droppedKeys);
+    }
+
     const { data, error } = await supabase
       .from('form_submissions')
-      .update({ ...body, updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .eq('submission_id', submissionId)
       .select()
       .single();
 
     if (error) {
+      console.error('[submissions PATCH] Supabase error:', error.message, '| payload keys:', Object.keys(updatePayload));
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ submission: data });
   } catch (err: any) {
+    console.error('[submissions PATCH] Exception:', err?.message);
     return NextResponse.json({ error: err?.message || 'Internal server error' }, { status: 500 });
   }
 }
