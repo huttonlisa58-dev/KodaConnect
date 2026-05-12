@@ -76,25 +76,27 @@ export function drawTextOverlay(
 }
 
 /**
- * Draw a checkmark at a checkbox position
+ * Draw a vector check-mark (✓) at a checkbox position.
  */
 export function drawCheckmarkOverlay(
   page: PDFPage,
   pos: { x: number; y: number; width: number; height: number },
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   font: PDFFont
 ): void {
   const size = Math.min(pos.width, pos.height, 14);
   const centerX = pos.x + pos.width / 2;
   const centerY = pos.y + pos.height / 2;
+  const h = size / 2;
+
+  const p1 = { x: centerX - h * 0.70, y: centerY + h * 0.10 };
+  const p2 = { x: centerX - h * 0.10, y: centerY - h * 0.50 };
+  const p3 = { x: centerX + h * 0.80, y: centerY + h * 0.70 };
+  const thickness = Math.max(1, size * 0.15);
 
   try {
-    page.drawText('X', {
-      x: centerX - size * 0.3,
-      y: centerY - size * 0.3,
-      size: size,
-      font,
-      color: rgb(0, 0, 0),
-    });
+    page.drawLine({ start: p1, end: p2, thickness, color: rgb(0, 0, 0) });
+    page.drawLine({ start: p2, end: p3, thickness, color: rgb(0, 0, 0) });
   } catch (err) {
     console.error('Error drawing checkmark:', err);
   }
