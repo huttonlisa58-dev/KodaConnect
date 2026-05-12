@@ -99,7 +99,6 @@ export function drawCheckmarkOverlay(
     console.error('Error drawing checkmark:', err);
   }
 }
-
 /**
  * Draw a filled black circle for radio fields in replica mode.
  */
